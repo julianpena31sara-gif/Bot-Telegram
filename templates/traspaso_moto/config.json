@@ -1,21 +1,16 @@
 {
-  "name": "📄 Traspaso de Moto",
+  "name": "📄 Poder para Trámite de Vehículo",
   "template_file": "template.docx",
   "fields": [
-    {"key": "nombre_vendedor", "question": "📝 Escribe el NOMBRE COMPLETO del VENDEDOR (actual dueño):"},
-    {"key": "cedula_vendedor", "question": "🪪 Escribe la CÉDULA del VENDEDOR (solo números):"},
-    {"key": "marca", "question": "🏍️ Escribe la MARCA de la moto:"},
-    {"key": "tipo", "question": "🔧 Escribe el TIPO (ej: Cross, Paseo):"},
-    {"key": "color", "question": "🎨 Escribe el COLOR de la moto:"},
-    {"key": "año_moto", "question": "📅 Escribe el AÑO de la moto (ej: 2020):"},
-    {"key": "motor", "question": "🔢 Escribe el número de MOTOR:"},
-    {"key": "chasis", "question": "🔢 Escribe el número de CHASIS:"},
-    {"key": "vpc", "question": "📋 Escribe el VPC:"},
-    {"key": "placa", "question": "🚗 Escribe la PLACA (ej: ABC-123):"},
-    {"key": "nombre_comprador", "question": "👤 Escribe el NOMBRE COMPLETO del COMPRADOR:"},
-    {"key": "cedula_comprador", "question": "🪪 Escribe la CÉDULA del COMPRADOR:"},
-    {"key": "dia_firma", "question": "📅 Escribe el DÍA de la firma (ej: 15):"},
-    {"key": "mes_firma", "question": "📅 Escribe el NÚMERO del MES (ej: 06 para Junio):"},
-    {"key": "año_firma", "question": "📅 Escribe el AÑO de la firma (ej: 2026):"}
+    {"key": "dia", "question": "📅 Escribe el DÍA de la fecha (ej: 10):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: octubre):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2024):"},
+    {"key": "entidad_destino", "question": "🏛️ Escribe la ENTIDAD a la que va dirigido (ej: Secretaría Distrital de Movilidad):"},
+    {"key": "nombre_vendedor", "question": "👤 Escribe el NOMBRE COMPLETO del propietario actual (vendedor):"},
+    {"key": "cedula_vendedor", "question": "🪪 Escribe la CÉDULA del propietario (solo números):"},
+    {"key": "ciudad_expedicion", "question": "📌 Escribe la CIUDAD de expedición de la cédula (ej: Bogotá):"},
+    {"key": "nombre_apoderado", "question": "👤 Escribe el NOMBRE COMPLETO del apoderado:"},
+    {"key": "cedula_apoderado", "question": "🪪 Escribe la CÉDULA del apoderado (solo números):"},
+    {"key": "placa", "question": "🚗 Escribe la PLACA del vehículo (ej: JIJ619):"}
   ]
 }

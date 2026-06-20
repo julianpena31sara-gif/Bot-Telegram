@@ -85,6 +85,7 @@ def whatsapp_webhook():
             templates = templates_loader.load_all_templates()
             if not templates:
                 resp.message("No hay plantillas disponibles.")
+                logger.warning("No hay plantillas")
                 return str(resp)
             
             saludo = obtener_saludo()
@@ -92,10 +93,11 @@ def whatsapp_webhook():
             for i, t in enumerate(templates, 1):
                 menu += f"{i}. {t['name']}\n"
             menu += "\nResponde con el numero de la opcion."
+            
             resp.message(menu)
             session["estado"] = "SELECT_TEMPLATE"
             logger.info("Menu enviado")
-            return str(resp)
+            return str(resp)  # <--- ¡AQUÍ ESTABA EL ERROR! Tenía una línea que no ejecutaba esto
         
         # ========== SELECCIONAR PLANTILLA ==========
         if session["estado"] == "SELECT_TEMPLATE":
@@ -185,13 +187,14 @@ def whatsapp_webhook():
                     
                     session.clear()
                     session["estado"] = "START"
+                    return str(resp)
                     
                 except Exception as e:
                     logger.error(f"Error al generar: {e}")
                     resp.message(f"Error al generar el documento: {str(e)}")
                     session.clear()
                     session["estado"] = "START"
-                return str(resp)
+                    return str(resp)
             
             elif incoming_msg.lower() in ["no", "cancelar"]:
                 saludo = obtener_saludo()

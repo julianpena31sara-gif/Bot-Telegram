@@ -1,16 +1,16 @@
 {
-  "name": "📄 Poder para Trámite de Vehículo",
+  "name": "Poder para Tramite de Vehiculo",
   "template_file": "template.docx",
   "fields": [
-    {"key": "dia", "question": "📅 Escribe el DÍA de la fecha (ej: 10):"},
-    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: octubre):"},
-    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2024):"},
-    {"key": "entidad_destino", "question": "🏛️ Escribe la ENTIDAD a la que va dirigido (ej: Secretaría Distrital de Movilidad):"},
-    {"key": "nombre_vendedor", "question": "👤 Escribe el NOMBRE COMPLETO del propietario actual (vendedor):"},
-    {"key": "cedula_vendedor", "question": "🪪 Escribe la CÉDULA del propietario (solo números):"},
-    {"key": "ciudad_expedicion", "question": "📌 Escribe la CIUDAD de expedición de la cédula (ej: Bogotá):"},
-    {"key": "nombre_apoderado", "question": "👤 Escribe el NOMBRE COMPLETO del apoderado:"},
-    {"key": "cedula_apoderado", "question": "🪪 Escribe la CÉDULA del apoderado (solo números):"},
-    {"key": "placa", "question": "🚗 Escribe la PLACA del vehículo (ej: JIJ619):"}
+    {"key": "dia", "question": "Escribe el DIA de la fecha (ej: 10):"},
+    {"key": "mes", "question": "Escribe el MES en letras (ej: octubre):"},
+    {"key": "año", "question": "Escribe el ANIO (ej: 2024):"},
+    {"key": "entidad_destino", "question": "Escribe la ENTIDAD a la que va dirigido:"},
+    {"key": "nombre_vendedor", "question": "Escribe el NOMBRE COMPLETO del propietario actual:"},
+    {"key": "cedula_vendedor", "question": "Escribe la CEDULA del propietario (solo numeros):"},
+    {"key": "ciudad_expedicion", "question": "Escribe la CIUDAD de expedicion de la cedula:"},
+    {"key": "nombre_apoderado", "question": "Escribe el NOMBRE COMPLETO del apoderado:"},
+    {"key": "cedula_apoderado", "question": "Escribe la CEDULA del apoderado (solo numeros):"},
+    {"key": "placa", "question": "Escribe la PLACA del vehiculo (ej: JIJ619):"}
   ]
 }

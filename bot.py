@@ -6,6 +6,7 @@ from flask import Flask, request, send_from_directory
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 from docxtpl import DocxTemplate
+import pytz  # <-- NUEVA IMPORTACIÓN
 import templates_loader
 
 # --- CONFIGURACIÓN DE LOGS ---
@@ -29,10 +30,13 @@ TEMPLATES_DIR = Path("templates")
 # --- SESIONES EN MEMORIA ---
 user_sessions = {}
 
-# --- FUNCIÓN PARA OBTENER SALUDO SEGÚN LA HORA ---
+# --- FUNCIÓN PARA OBTENER SALUDO SEGÚN LA HORA EN COLOMBIA ---
 def obtener_saludo():
-    """Devuelve 'Buenos días', 'Buenas tardes' o 'Buenas noches' según la hora actual."""
-    hour = datetime.now().hour
+    """Devuelve 'Buenos días', 'Buenas tardes' o 'Buenas noches' según la hora en Colombia (UTC-5)."""
+    colombia_tz = pytz.timezone('America/Bogota')
+    now_colombia = datetime.now(colombia_tz)
+    hour = now_colombia.hour
+
     if 6 <= hour < 12:
         return "Buenos días"
     elif 12 <= hour < 18:

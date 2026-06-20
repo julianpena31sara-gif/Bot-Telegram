@@ -1,19 +1,38 @@
-import os, json
-BASE_DIR = os.path.dirname(__file__)
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+import os
+import json
+from pathlib import Path
+
+BASE_DIR = Path(__file__).parent
+TEMPLATES_DIR = BASE_DIR / "templates"
+
 def load_all_templates():
+    """Carga todas las plantillas de la carpeta templates/"""
     templates = []
-    if not os.path.exists(TEMPLATES_DIR): return templates
-    for folder in os.listdir(TEMPLATES_DIR):
-        config_path = os.path.join(TEMPLATES_DIR, folder, "config.json")
-        if os.path.isdir(os.path.join(TEMPLATES_DIR, folder)) and os.path.exists(config_path):
-            with open(config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-                config["folder"] = folder
-                templates.append(config)
+    if not TEMPLATES_DIR.exists():
+        print(f"⚠️ La carpeta {TEMPLATES_DIR} no existe.")
+        return templates
+
+    for folder in TEMPLATES_DIR.iterdir():
+        if folder.is_dir():
+            config_path = folder / "config.json"
+            if config_path.exists():
+                try:
+                    with open(config_path, "r", encoding="utf-8") as f:
+                        config = json.load(f)
+                        config["folder"] = folder.name
+                        templates.append(config)
+                        print(f"✅ Plantilla cargada: {config.get('name', folder.name)}")
+                except Exception as e:
+                    print(f"❌ Error al cargar {config_path}: {e}")
+            else:
+                print(f"⚠️ {folder} no tiene config.json")
     return templates
+
 def get_template_config(folder_name):
-    config_path = os.path.join(TEMPLATES_DIR, folder_name, "config.json")
+    """Devuelve la configuración de una plantilla específica"""
+    config_path = TEMPLATES_DIR / folder_name / "config.json"
+    if not config_path.exists():
+        raise FileNotFoundError(f"No se encontró config.json en {folder_name}")
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
         config["folder"] = folder_name

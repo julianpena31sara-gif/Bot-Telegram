@@ -29,6 +29,17 @@ TEMPLATES_DIR = Path("templates")
 # --- SESIONES EN MEMORIA ---
 user_sessions = {}
 
+# --- FUNCIÓN PARA OBTENER SALUDO SEGÚN LA HORA ---
+def obtener_saludo():
+    """Devuelve 'Buenos días', 'Buenas tardes' o 'Buenas noches' según la hora actual."""
+    hour = datetime.now().hour
+    if 6 <= hour < 12:
+        return "Buenos días"
+    elif 12 <= hour < 18:
+        return "Buenas tardes"
+    else:
+        return "Buenas noches"
+
 # --- FUNCIÓN PARA GENERAR WORD ---
 def generar_word(answers, folder, config_data):
     """Genera el Word y devuelve la ruta y nombre del archivo"""
@@ -116,13 +127,14 @@ def whatsapp_webhook():
                 resp.message("⚠️ No hay plantillas disponibles. Contacta al administrador.")
                 return str(resp)
 
-            menu = "👋 Hola, soy el asistente de trámites.\n\nSelecciona una opción:\n"
+            saludo = obtener_saludo()
+            menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué vas a hacer?\n"
             for i, t in enumerate(templates, 1):
                 menu += f"{i}. {t['name']}\n"
             menu += "\nResponde con el número de la opción."
             resp.message(menu)
             session["estado"] = "SELECT_TEMPLATE"
-            logger.info("📋 Menú enviado")
+            logger.info("📋 Menú con saludo enviado")
             return str(resp)
 
         # --- SELECCIÓN DE PLANTILLA ---
@@ -219,7 +231,8 @@ def whatsapp_webhook():
                 return str(resp)
 
             elif incoming_msg.lower() in ["no", "cancelar"]:
-                resp.message("🔄 Operación cancelada. Escribe cualquier mensaje para comenzar de nuevo.")
+                saludo = obtener_saludo()
+                resp.message(f"{saludo}. Operación cancelada. Escribe cualquier mensaje para comenzar de nuevo.")
                 session.clear()
                 session["estado"] = "START"
                 return str(resp)
@@ -228,7 +241,8 @@ def whatsapp_webhook():
                 return str(resp)
 
         # --- ESTADO NO RECONOCIDO (FALLBACK) ---
-        resp.message("Escribe cualquier mensaje para comenzar.")
+        saludo = obtener_saludo()
+        resp.message(f"{saludo}. Escribe cualquier mensaje para comenzar.")
         session["estado"] = "START"
         return str(resp)
 

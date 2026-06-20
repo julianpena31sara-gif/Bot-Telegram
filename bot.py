@@ -8,69 +8,94 @@ from twilio.rest import Client
 from docxtpl import DocxTemplate
 import templates_loader
 
-# --- CONFIGURACIÓN ---
-logging.basicConfig(level=logging.INFO)
+# --- CONFIGURACIÓN DE LOGS ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 
-# Credenciales de Twilio (variables de entorno)
+# --- VARIABLES DE ENTORNO ---
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 WHATSAPP_FROM = os.getenv("WHATSAPP_FROM")          # Ej: whatsapp:+14155238886
-OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP")        # Opcional, puede ser None
-
-# Carpeta de plantillas y archivos generados
-OUTPUT_DIR = "generados"
-Path(OUTPUT_DIR).mkdir(exist_ok=True)
-
-# URL pública de tu bot en Railway (sin barra al final)
+OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP")        # Opcional
 BASE_URL = os.getenv("BASE_URL", "https://bot-telegram-production-3cc3.up.railway.app")
 
-# Diccionario para manejar el estado de cada usuario (sesiones en memoria)
+# --- CARPETAS ---
+OUTPUT_DIR = "generados"
+Path(OUTPUT_DIR).mkdir(exist_ok=True)
+TEMPLATES_DIR = Path("templates")
+
+# --- SESIONES EN MEMORIA ---
 user_sessions = {}
 
-# --- FUNCIONES AUXILIARES ---
+# --- FUNCIÓN PARA GENERAR WORD ---
 def generar_word(answers, folder, config_data):
-    """Genera el Word y devuelve la ruta del archivo y su nombre"""
-    template_path = os.path.join("templates", folder, config_data["template_file"])
-    template_path_abs = os.path.abspath(template_path)
-    
-    now = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filename = f"Traspaso_{answers.get('placa', 'sin_placa')}_{now}.docx"
-    output_path = os.path.join(OUTPUT_DIR, output_filename)
-    
-    doc = DocxTemplate(template_path_abs)
-    doc.render(answers)
-    doc.save(output_path)
-    return output_path, output_filename
+    """Genera el Word y devuelve la ruta y nombre del archivo"""
+    try:
+        template_file = config_data.get("template_file", "template.docx")
+        template_path = TEMPLATES_DIR / folder / template_file
+        template_path_abs = template_path.resolve()
 
+        if not template_path_abs.exists():
+            raise FileNotFoundError(f"Plantilla no encontrada: {template_path_abs}")
+
+        now = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"Traspaso_{answers.get('placa', 'sin_placa')}_{now}.docx"
+        output_path = Path(OUTPUT_DIR) / output_filename
+
+        doc = DocxTemplate(str(template_path_abs))
+        doc.render(answers)
+        doc.save(str(output_path))
+
+        logger.info(f"✅ Documento generado: {output_filename}")
+        return str(output_path), output_filename
+
+    except Exception as e:
+        logger.error(f"❌ Error en generar_word: {e}")
+        raise
+
+# --- FUNCIÓN PARA ENVIAR MENSAJE POR WHATSAPP ---
 def enviar_mensaje_whatsapp(numero_destino, mensaje):
-    """Envía un mensaje de texto por WhatsApp usando Twilio"""
-    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not WHATSAPP_FROM:
-        logging.warning("Faltan credenciales de Twilio para enviar mensaje.")
+    """Envía mensaje de texto por WhatsApp"""
+    if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, WHATSAPP_FROM]):
+        logger.warning("Faltan credenciales de Twilio, no se enviará mensaje.")
         return None
-    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-    message = client.messages.create(
-        body=mensaje,
-        from_=WHATSAPP_FROM,
-        to=numero_destino
-    )
-    return message.sid
+    try:
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        message = client.messages.create(
+            body=mensaje,
+            from_=WHATSAPP_FROM,
+            to=numero_destino
+        )
+        logger.info(f"📤 Mensaje enviado a {numero_destino}: {message.sid}")
+        return message.sid
+    except Exception as e:
+        logger.error(f"❌ Error al enviar mensaje: {e}")
+        return None
 
-# --- ENDPOINT PARA DESCARGAR ARCHIVOS ---
+# --- ENDPOINT PARA DESCARGAR ---
 @app.route("/descargar/<filename>", methods=["GET"])
 def descargar_archivo(filename):
-    """Sirve el archivo generado para su descarga"""
-    return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
+    """Sirve el archivo generado"""
+    try:
+        return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
+    except Exception as e:
+        logger.error(f"❌ Error al descargar {filename}: {e}")
+        return "Archivo no encontrado", 404
 
-# --- ENDPOINT PRINCIPAL (WEBHOOK DE WHATSAPP) ---
+# --- ENDPOINT PRINCIPAL (WEBHOOK) ---
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_webhook():
-    """Recibe mensajes de WhatsApp y procesa el flujo del bot"""
-    # Obtener datos del mensaje entrante
+    """Procesa mensajes entrantes de WhatsApp"""
+    logger.info("📨 Solicitud POST recibida en /whatsapp")
+
+    # Obtener datos del mensaje
     incoming_msg = request.values.get("Body", "").strip()
     sender = request.values.get("From", "")
+    logger.info(f"👤 De: {sender} | Mensaje: {incoming_msg}")
 
-    # Inicializar sesión del usuario si no existe
+    # Inicializar sesión
     if sender not in user_sessions:
         user_sessions[sender] = {
             "estado": "START",
@@ -79,136 +104,143 @@ def whatsapp_webhook():
             "current_field_index": 0,
             "answers": {}
         }
-
     session = user_sessions[sender]
     resp = MessagingResponse()
 
-    # --- FLUJO DE CONVERSACIÓN ---
-    # Estado: START (menú principal)
-    if session["estado"] == "START":
-        templates = templates_loader.load_all_templates()
-        if not templates:
-            resp.message("⚠️ No hay plantillas disponibles. Contacta al administrador.")
-        else:
+    try:
+        # --- MENÚ PRINCIPAL (START) ---
+        if session["estado"] == "START":
+            templates = templates_loader.load_all_templates()
+            if not templates:
+                logger.warning("No se cargaron plantillas")
+                resp.message("⚠️ No hay plantillas disponibles. Contacta al administrador.")
+                return str(resp)
+
             menu = "👋 Hola, soy el asistente de trámites.\n\nSelecciona una opción:\n"
             for i, t in enumerate(templates, 1):
                 menu += f"{i}. {t['name']}\n"
             menu += "\nResponde con el número de la opción."
             resp.message(menu)
             session["estado"] = "SELECT_TEMPLATE"
-        return str(resp)
+            logger.info("📋 Menú enviado")
+            return str(resp)
 
-    # Estado: SELECT_TEMPLATE (elige plantilla)
-    if session["estado"] == "SELECT_TEMPLATE":
-        templates = templates_loader.load_all_templates()
-        try:
-            option = int(incoming_msg) - 1
-            if 0 <= option < len(templates):
-                template = templates[option]
-                session["template_folder"] = template["folder"]
-                session["template_config"] = template
-                session["current_field_index"] = 0
-                session["answers"] = {}
-                session["estado"] = "ASKING_DATA"
-
-                # Hacer primera pregunta
-                fields = template["fields"]
-                first_question = fields[0]["question"]
-                resp.message(f"{first_question}\n\n_(Escribe tu respuesta)_")
-            else:
-                resp.message("❌ Opción no válida. Elige un número del menú.")
-        except ValueError:
-            resp.message("❌ Por favor, responde con el número de la opción.")
-        return str(resp)
-
-    # Estado: ASKING_DATA (respondiendo preguntas)
-    if session["estado"] == "ASKING_DATA":
-        config_data = session["template_config"]
-        fields = config_data["fields"]
-        idx = session["current_field_index"]
-
-        # Guardar respuesta
-        if idx < len(fields):
-            field_key = fields[idx]["key"]
-            session["answers"][field_key] = incoming_msg
-            session["current_field_index"] = idx + 1
-
-            # Preguntar siguiente o mostrar resumen
-            if session["current_field_index"] < len(fields):
-                next_question = fields[session["current_field_index"]]["question"]
-                resp.message(f"{next_question}\n\n_(Escribe tu respuesta)_")
-                return str(resp)
-            else:
-                # Ya no hay más preguntas, mostrar resumen
-                session["estado"] = "REVIEW_DATA"
-                answers = session["answers"]
-                summary = "✅ *REVISIÓN DE DATOS*\n\n"
-                for key, value in answers.items():
-                    clean_key = key.replace("_", " ").title()
-                    summary += f"📌 *{clean_key}:* {value}\n"
-                summary += "\n¿Están correctos? Responde SI o NO."
-                resp.message(summary)
-                return str(resp)
-
-    # Estado: REVIEW_DATA (confirmar o cancelar)
-    if session["estado"] == "REVIEW_DATA":
-        if incoming_msg.lower() in ["si", "sí", "yes"]:
-            # Generar documento
+        # --- SELECCIÓN DE PLANTILLA ---
+        if session["estado"] == "SELECT_TEMPLATE":
+            templates = templates_loader.load_all_templates()
             try:
-                config_data = session["template_config"]
-                answers = session["answers"]
-                folder = session["template_folder"]
+                option = int(incoming_msg) - 1
+                if 0 <= option < len(templates):
+                    template = templates[option]
+                    session["template_folder"] = template["folder"]
+                    session["template_config"] = template
+                    session["current_field_index"] = 0
+                    session["answers"] = {}
+                    session["estado"] = "ASKING_DATA"
 
-                # Generar el Word
-                output_path, output_filename = generar_word(answers, folder, config_data)
+                    fields = template["fields"]
+                    first_question = fields[0]["question"]
+                    resp.message(f"{first_question}\n\n_(Escribe tu respuesta)_")
+                    logger.info(f"📝 Primera pregunta: {first_question}")
+                else:
+                    resp.message("❌ Opción no válida. Elige un número del menú.")
+            except ValueError:
+                resp.message("❌ Responde con el número de la opción.")
+            return str(resp)
 
-                # Construir enlace de descarga
-                descarga_url = f"{BASE_URL}/descargar/{output_filename}"
+        # --- RESPUESTA A PREGUNTAS ---
+        if session["estado"] == "ASKING_DATA":
+            config_data = session["template_config"]
+            fields = config_data["fields"]
+            idx = session["current_field_index"]
 
-                # Mensaje para el cliente con el enlace
-                mensaje_cliente = (
-                    f"✅ *¡Documento generado exitosamente!*\n\n"
-                    f"Puedes descargarlo desde este enlace:\n"
-                    f"{descarga_url}\n\n"
-                    f"🔒 El enlace es válido mientras esté en el servidor.\n"
-                    f"📌 *Placa:* {answers.get('placa', 'N/A')}"
-                )
-                resp.message(mensaje_cliente)
+            if idx < len(fields):
+                field_key = fields[idx]["key"]
+                session["answers"][field_key] = incoming_msg
+                session["current_field_index"] = idx + 1
 
-                # (Opcional) Enviar el enlace también a la dueña por WhatsApp
-                if OWNER_WHATSAPP:
-                    mensaje_duena = (
-                        f"📄 *Nuevo documento generado*\n\n"
-                        f"👤 Solicitado por: {sender}\n"
-                        f"🏍️ Placa: {answers.get('placa', 'N/A')}\n"
-                        f"📌 Comprador: {answers.get('nombre_comprador', 'N/A')}\n\n"
-                        f"🔗 Descarga: {descarga_url}"
+                if session["current_field_index"] < len(fields):
+                    next_question = fields[session["current_field_index"]]["question"]
+                    resp.message(f"{next_question}\n\n_(Escribe tu respuesta)_")
+                    return str(resp)
+                else:
+                    session["estado"] = "REVIEW_DATA"
+                    answers = session["answers"]
+                    summary = "✅ *REVISIÓN DE DATOS*\n\n"
+                    for key, value in answers.items():
+                        clean_key = key.replace("_", " ").title()
+                        summary += f"📌 *{clean_key}:* {value}\n"
+                    summary += "\n¿Están correctos? Responde SI o NO."
+                    resp.message(summary)
+                    logger.info("📋 Resumen enviado")
+                    return str(resp)
+
+        # --- CONFIRMACIÓN (REVIEW_DATA) ---
+        if session["estado"] == "REVIEW_DATA":
+            if incoming_msg.lower() in ["si", "sí", "yes"]:
+                try:
+                    config_data = session["template_config"]
+                    answers = session["answers"]
+                    folder = session["template_folder"]
+
+                    logger.info("📄 Generando documento...")
+                    output_path, output_filename = generar_word(answers, folder, config_data)
+
+                    descarga_url = f"{BASE_URL}/descargar/{output_filename}"
+                    mensaje_cliente = (
+                        f"✅ *¡Documento generado exitosamente!*\n\n"
+                        f"Puedes descargarlo desde este enlace:\n"
+                        f"{descarga_url}\n\n"
+                        f"🔒 El enlace es válido mientras esté en el servidor.\n"
+                        f"📌 *Placa:* {answers.get('placa', 'N/A')}"
                     )
-                    enviar_mensaje_whatsapp(OWNER_WHATSAPP, mensaje_duena)
+                    resp.message(mensaje_cliente)
+                    logger.info(f"🔗 Enlace de descarga: {descarga_url}")
 
-                # Limpiar sesión
+                    # Enviar a la dueña si está configurada
+                    if OWNER_WHATSAPP:
+                        mensaje_duena = (
+                            f"📄 *Nuevo documento generado*\n\n"
+                            f"👤 Solicitado por: {sender}\n"
+                            f"🏍️ Placa: {answers.get('placa', 'N/A')}\n"
+                            f"📌 Comprador: {answers.get('nombre_comprador', 'N/A')}\n\n"
+                            f"🔗 Descarga: {descarga_url}"
+                        )
+                        enviar_mensaje_whatsapp(OWNER_WHATSAPP, mensaje_duena)
+
+                    session.clear()
+                    session["estado"] = "START"
+
+                except Exception as e:
+                    logger.error(f"❌ Error en generación: {e}", exc_info=True)
+                    resp.message(f"❌ Error al generar el documento: {str(e)}")
+                    session.clear()
+                    session["estado"] = "START"
+                return str(resp)
+
+            elif incoming_msg.lower() in ["no", "cancelar"]:
+                resp.message("🔄 Operación cancelada. Escribe cualquier mensaje para comenzar de nuevo.")
                 session.clear()
                 session["estado"] = "START"
+                return str(resp)
+            else:
+                resp.message("❌ Responde SI para generar el documento o NO para cancelar.")
+                return str(resp)
 
-            except Exception as e:
-                logging.error(f"Error al generar documento: {e}")
-                resp.message(f"❌ Error al generar el documento: {str(e)}")
-                session["estado"] = "START"
-
-        elif incoming_msg.lower() in ["no", "cancelar"]:
-            resp.message("🔄 Operación cancelada. Escribe cualquier mensaje para comenzar de nuevo.")
-            session.clear()
-            session["estado"] = "START"
-        else:
-            resp.message("❌ Responde SI para generar el documento o NO para cancelar.")
+        # --- ESTADO NO RECONOCIDO (FALLBACK) ---
+        resp.message("Escribe cualquier mensaje para comenzar.")
+        session["estado"] = "START"
         return str(resp)
 
-    # Si llegamos aquí (estado no reconocido), reiniciamos
-    resp.message("Escribe cualquier mensaje para comenzar.")
-    session["estado"] = "START"
-    return str(resp)
+    except Exception as e:
+        logger.error(f"❌ Error inesperado en webhook: {e}", exc_info=True)
+        resp.message("❌ Ocurrió un error inesperado. Intenta de nuevo.")
+        session.clear()
+        session["estado"] = "START"
+        return str(resp)
 
 # --- INICIO DEL SERVIDOR ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    logger.info(f"🚀 Iniciando servidor en puerto {port}")
     app.run(host="0.0.0.0", port=port)

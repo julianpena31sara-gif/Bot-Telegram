@@ -7,10 +7,10 @@
     {"key": "año", "question": "Escribe el ANIO (ej: 2024):"},
     {"key": "entidad_destino", "question": "Escribe la ENTIDAD a la que va dirigido:"},
     {"key": "nombre_vendedor", "question": "Escribe el NOMBRE COMPLETO del propietario actual:"},
-    {"key": "cedula_vendedor", "question": "Escribe la CEDULA del propietario (solo numeros):"},
+    {"key": "cedula_vendedor", "question": "Escribe la CEDULA del propietario:"},
     {"key": "ciudad_expedicion", "question": "Escribe la CIUDAD de expedicion de la cedula:"},
     {"key": "nombre_apoderado", "question": "Escribe el NOMBRE COMPLETO del apoderado:"},
-    {"key": "cedula_apoderado", "question": "Escribe la CEDULA del apoderado (solo numeros):"},
-    {"key": "placa", "question": "Escribe la PLACA del vehiculo (ej: JIJ619):"}
+    {"key": "cedula_apoderado", "question": "Escribe la CEDULA del apoderado:"},
+    {"key": "placa", "question": "Escribe la PLACA del vehiculo:"}
   ]
 }

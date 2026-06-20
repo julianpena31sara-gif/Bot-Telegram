@@ -6,12 +6,10 @@ BASE_DIR = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 
 def load_all_templates():
-    """Carga todas las plantillas de la carpeta templates/"""
     templates = []
     if not TEMPLATES_DIR.exists():
-        print(f"⚠️ La carpeta {TEMPLATES_DIR} no existe.")
         return templates
-
+    
     for folder in TEMPLATES_DIR.iterdir():
         if folder.is_dir():
             config_path = folder / "config.json"
@@ -21,18 +19,13 @@ def load_all_templates():
                         config = json.load(f)
                         config["folder"] = folder.name
                         templates.append(config)
-                        print(f"✅ Plantilla cargada: {config.get('name', folder.name)}")
+                        print(f"Plantilla cargada: {config.get('name', folder.name)}")
                 except Exception as e:
-                    print(f"❌ Error al cargar {config_path}: {e}")
-            else:
-                print(f"⚠️ {folder} no tiene config.json")
+                    print(f"Error cargando {config_path}: {e}")
     return templates
 
 def get_template_config(folder_name):
-    """Devuelve la configuración de una plantilla específica"""
     config_path = TEMPLATES_DIR / folder_name / "config.json"
-    if not config_path.exists():
-        raise FileNotFoundError(f"No se encontró config.json en {folder_name}")
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
         config["folder"] = folder_name

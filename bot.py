@@ -2,7 +2,7 @@ import os
 import logging
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, request
+from flask import Flask, request, send_from_directory
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 from docxtpl import DocxTemplate
@@ -12,27 +12,27 @@ import templates_loader
 logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 
-# Credenciales de Twilio desde variables de entorno
+# Credenciales de Twilio (variables de entorno)
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 WHATSAPP_FROM = os.getenv("WHATSAPP_FROM")  # Ej: whatsapp:+14155238886
-OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP")  # Número de la dueña (ej: whatsapp:+573001234567)
+OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP")  # Número de la dueña (opcional)
 
-# Carpeta para guardar los documentos generados
+# Carpeta de plantillas y archivos generados
 OUTPUT_DIR = "generados"
 Path(OUTPUT_DIR).mkdir(exist_ok=True)
 
-# Diccionario para manejar el estado de cada usuario (similar a context.user_data)
+# URL pública de tu bot en Railway (sin / al final)
+BASE_URL = "https://bot-telegram-production-3cc3.up.railway.app"
+
+# Diccionario para manejar el estado de cada usuario
 user_sessions = {}
 
-# --- FUNCIONES DE GENERACIÓN DE DOCUMENTOS ---
-def generar_documento(answers, folder, config_data):
+# --- FUNCIONES AUXILIARES ---
+def generar_word(answers, folder, config_data):
     """Genera el Word y devuelve la ruta del archivo"""
     template_path = os.path.join("templates", folder, config_data["template_file"])
     template_path_abs = os.path.abspath(template_path)
-    
-    if not os.path.exists(template_path_abs):
-        raise FileNotFoundError(f"No se encuentra la plantilla en {template_path_abs}")
     
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filename = f"Traspaso_{answers.get('placa', 'sin_placa')}_{now}.docx"
@@ -41,7 +41,7 @@ def generar_documento(answers, folder, config_data):
     doc = DocxTemplate(template_path_abs)
     doc.render(answers)
     doc.save(output_path)
-    return output_path
+    return output_path, output_filename
 
 def enviar_mensaje_whatsapp(numero_destino, mensaje):
     """Envía un mensaje de texto por WhatsApp usando Twilio"""
@@ -53,7 +53,13 @@ def enviar_mensaje_whatsapp(numero_destino, mensaje):
     )
     return message.sid
 
-# --- MANEJO DE MENSAJES ENTRANTES (WEBHOOK) ---
+# --- ENDPOINT PARA DESCARGAR ARCHIVOS ---
+@app.route("/descargar/<filename>", methods=["GET"])
+def descargar_archivo(filename):
+    """Sirve el archivo generado para su descarga"""
+    return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
+
+# --- ENDPOINT PRINCIPAL (WEBHOOK DE WHATSAPP) ---
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_webhook():
     """Recibe mensajes de WhatsApp y procesa el flujo del bot"""
@@ -144,41 +150,48 @@ def whatsapp_webhook():
     # Estado: REVIEW_DATA (confirmar o cancelar)
     if session["estado"] == "REVIEW_DATA":
         if incoming_msg.lower() in ["si", "sí", "yes"]:
+            # Generar documento
             try:
                 config_data = session["template_config"]
                 answers = session["answers"]
                 folder = session["template_folder"]
+                
                 # Generar el Word
-                doc_path = generar_documento(answers, folder, config_data)
+                output_path, output_filename = generar_word(answers, folder, config_data)
                 
-                # Mensaje de éxito para el cliente
-                resp.message(
-                    "✅ *¡Documento generado exitosamente!*\n\n"
-                    "La encargada del trámite lo ha recibido para su revisión. "
-                    "En breve se comunicará contigo."
-                )
+                # Construir enlace de descarga
+                descarga_url = f"{BASE_URL}/descargar/{output_filename}"
                 
-                # NOTIFICAR A LA DUEÑA (por WhatsApp)
-                # Aquí le enviamos un mensaje con los datos y el archivo adjunto.
-                # Como el sandbox no envía archivos, le damos un enlace de descarga (opcional).
-                # Por ahora, solo le notificamos que se generó un documento.
-                mensaje_dueña = (
-                    f"📄 *Nuevo documento generado*\n\n"
-                    f"👤 Solicitado por: {sender}\n"
-                    f"🏍️ Placa: {answers.get('placa', 'N/A')}\n"
-                    f"📌 Comprador: {answers.get('nombre_comprador', 'N/A')}\n\n"
-                    f"Archivo generado en el servidor."
+                # Mensaje para el cliente con el enlace
+                mensaje_cliente = (
+                    f"✅ *¡Documento generado exitosamente!*\n\n"
+                    f"Puedes descargarlo desde este enlace:\n"
+                    f"{descarga_url}\n\n"
+                    f"🔒 El enlace es válido por 24 horas.\n"
+                    f"📌 *Placa:* {answers.get('placa', 'N/A')}"
                 )
-                enviar_mensaje_whatsapp(OWNER_WHATSAPP, mensaje_dueña)
+                resp.message(mensaje_cliente)
+                
+                # (Opcional) Enviar el enlace también a la dueña por WhatsApp
+                if OWNER_WHATSAPP:
+                    mensaje_duena = (
+                        f"📄 *Nuevo documento generado*\n\n"
+                        f"👤 Solicitado por: {sender}\n"
+                        f"🏍️ Placa: {answers.get('placa', 'N/A')}\n"
+                        f"📌 Comprador: {answers.get('nombre_comprador', 'N/A')}\n\n"
+                        f"🔗 Descarga: {descarga_url}"
+                    )
+                    enviar_mensaje_whatsapp(OWNER_WHATSAPP, mensaje_duena)
                 
                 # Limpiar sesión
                 session.clear()
                 session["estado"] = "START"
+                
             except Exception as e:
                 resp.message(f"❌ Error al generar el documento: {str(e)}")
                 session["estado"] = "START"
         elif incoming_msg.lower() in ["no", "cancelar"]:
-            resp.message("🔄 Operación cancelada. Escribe /start para comenzar de nuevo.")
+            resp.message("🔄 Operación cancelada. Escribe cualquier mensaje para comenzar de nuevo.")
             session.clear()
             session["estado"] = "START"
         else:
@@ -186,10 +199,11 @@ def whatsapp_webhook():
         return str(resp)
     
     # Si llegamos aquí, reiniciamos la conversación
-    resp.message("Escribe /start para comenzar.")
+    resp.message("Escribe cualquier mensaje para comenzar.")
     session["estado"] = "START"
     return str(resp)
 
 # --- INICIO DEL SERVIDOR ---
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

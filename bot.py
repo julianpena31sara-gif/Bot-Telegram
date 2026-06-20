@@ -15,22 +15,22 @@ app = Flask(__name__)
 # Credenciales de Twilio (variables de entorno)
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-WHATSAPP_FROM = os.getenv("WHATSAPP_FROM")  # Ej: whatsapp:+14155238886
-OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP")  # Número de la dueña (opcional)
+WHATSAPP_FROM = os.getenv("WHATSAPP_FROM")          # Ej: whatsapp:+14155238886
+OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP")        # Opcional, puede ser None
 
 # Carpeta de plantillas y archivos generados
 OUTPUT_DIR = "generados"
 Path(OUTPUT_DIR).mkdir(exist_ok=True)
 
-# URL pública de tu bot en Railway (sin / al final)
-BASE_URL = "https://bot-telegram-production-3cc3.up.railway.app"
+# URL pública de tu bot en Railway (sin barra al final)
+BASE_URL = os.getenv("BASE_URL", "https://bot-telegram-production-3cc3.up.railway.app")
 
-# Diccionario para manejar el estado de cada usuario
+# Diccionario para manejar el estado de cada usuario (sesiones en memoria)
 user_sessions = {}
 
 # --- FUNCIONES AUXILIARES ---
 def generar_word(answers, folder, config_data):
-    """Genera el Word y devuelve la ruta del archivo"""
+    """Genera el Word y devuelve la ruta del archivo y su nombre"""
     template_path = os.path.join("templates", folder, config_data["template_file"])
     template_path_abs = os.path.abspath(template_path)
     
@@ -45,6 +45,9 @@ def generar_word(answers, folder, config_data):
 
 def enviar_mensaje_whatsapp(numero_destino, mensaje):
     """Envía un mensaje de texto por WhatsApp usando Twilio"""
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not WHATSAPP_FROM:
+        logging.warning("Faltan credenciales de Twilio para enviar mensaje.")
+        return None
     client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
     message = client.messages.create(
         body=mensaje,
@@ -65,8 +68,8 @@ def whatsapp_webhook():
     """Recibe mensajes de WhatsApp y procesa el flujo del bot"""
     # Obtener datos del mensaje entrante
     incoming_msg = request.values.get("Body", "").strip()
-    sender = request.values.get("From", "")  # Número de WhatsApp del cliente
-    
+    sender = request.values.get("From", "")
+
     # Inicializar sesión del usuario si no existe
     if sender not in user_sessions:
         user_sessions[sender] = {
@@ -76,10 +79,10 @@ def whatsapp_webhook():
             "current_field_index": 0,
             "answers": {}
         }
-    
+
     session = user_sessions[sender]
     resp = MessagingResponse()
-    
+
     # --- FLUJO DE CONVERSACIÓN ---
     # Estado: START (menú principal)
     if session["estado"] == "START":
@@ -94,7 +97,7 @@ def whatsapp_webhook():
             resp.message(menu)
             session["estado"] = "SELECT_TEMPLATE"
         return str(resp)
-    
+
     # Estado: SELECT_TEMPLATE (elige plantilla)
     if session["estado"] == "SELECT_TEMPLATE":
         templates = templates_loader.load_all_templates()
@@ -107,7 +110,7 @@ def whatsapp_webhook():
                 session["current_field_index"] = 0
                 session["answers"] = {}
                 session["estado"] = "ASKING_DATA"
-                
+
                 # Hacer primera pregunta
                 fields = template["fields"]
                 first_question = fields[0]["question"]
@@ -117,19 +120,19 @@ def whatsapp_webhook():
         except ValueError:
             resp.message("❌ Por favor, responde con el número de la opción.")
         return str(resp)
-    
+
     # Estado: ASKING_DATA (respondiendo preguntas)
     if session["estado"] == "ASKING_DATA":
         config_data = session["template_config"]
         fields = config_data["fields"]
         idx = session["current_field_index"]
-        
+
         # Guardar respuesta
         if idx < len(fields):
             field_key = fields[idx]["key"]
             session["answers"][field_key] = incoming_msg
             session["current_field_index"] = idx + 1
-            
+
             # Preguntar siguiente o mostrar resumen
             if session["current_field_index"] < len(fields):
                 next_question = fields[session["current_field_index"]]["question"]
@@ -146,7 +149,7 @@ def whatsapp_webhook():
                 summary += "\n¿Están correctos? Responde SI o NO."
                 resp.message(summary)
                 return str(resp)
-    
+
     # Estado: REVIEW_DATA (confirmar o cancelar)
     if session["estado"] == "REVIEW_DATA":
         if incoming_msg.lower() in ["si", "sí", "yes"]:
@@ -155,23 +158,23 @@ def whatsapp_webhook():
                 config_data = session["template_config"]
                 answers = session["answers"]
                 folder = session["template_folder"]
-                
+
                 # Generar el Word
                 output_path, output_filename = generar_word(answers, folder, config_data)
-                
+
                 # Construir enlace de descarga
                 descarga_url = f"{BASE_URL}/descargar/{output_filename}"
-                
+
                 # Mensaje para el cliente con el enlace
                 mensaje_cliente = (
                     f"✅ *¡Documento generado exitosamente!*\n\n"
                     f"Puedes descargarlo desde este enlace:\n"
                     f"{descarga_url}\n\n"
-                    f"🔒 El enlace es válido por 24 horas.\n"
+                    f"🔒 El enlace es válido mientras esté en el servidor.\n"
                     f"📌 *Placa:* {answers.get('placa', 'N/A')}"
                 )
                 resp.message(mensaje_cliente)
-                
+
                 # (Opcional) Enviar el enlace también a la dueña por WhatsApp
                 if OWNER_WHATSAPP:
                     mensaje_duena = (
@@ -182,14 +185,16 @@ def whatsapp_webhook():
                         f"🔗 Descarga: {descarga_url}"
                     )
                     enviar_mensaje_whatsapp(OWNER_WHATSAPP, mensaje_duena)
-                
+
                 # Limpiar sesión
                 session.clear()
                 session["estado"] = "START"
-                
+
             except Exception as e:
+                logging.error(f"Error al generar documento: {e}")
                 resp.message(f"❌ Error al generar el documento: {str(e)}")
                 session["estado"] = "START"
+
         elif incoming_msg.lower() in ["no", "cancelar"]:
             resp.message("🔄 Operación cancelada. Escribe cualquier mensaje para comenzar de nuevo.")
             session.clear()
@@ -197,8 +202,8 @@ def whatsapp_webhook():
         else:
             resp.message("❌ Responde SI para generar el documento o NO para cancelar.")
         return str(resp)
-    
-    # Si llegamos aquí, reiniciamos la conversación
+
+    # Si llegamos aquí (estado no reconocido), reiniciamos
     resp.message("Escribe cualquier mensaje para comenzar.")
     session["estado"] = "START"
     return str(resp)

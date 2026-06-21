@@ -19,9 +19,9 @@ def load_all_templates():
                         config = json.load(f)
                         config["folder"] = folder.name
                         templates.append(config)
-                        print(f"Plantilla cargada: {config.get('name', folder.name)}")
+                        print(f"✅ Plantilla cargada: {config.get('name', folder.name)}")
                 except Exception as e:
-                    print(f"Error cargando {config_path}: {e}")
+                    print(f"❌ Error cargando {config_path}: {e}")
     return templates
 
 def get_template_config(folder_name):

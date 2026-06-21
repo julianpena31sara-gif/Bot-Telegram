@@ -14,11 +14,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
-# --- VARIABLES DE ENTORNO (ULTRAMSG) ---
-ULTRA_INSTANCE_ID = os.getenv("ULTRA_INSTANCE_ID")  # Ej: instance123456
-ULTRA_TOKEN = os.getenv("ULTRA_TOKEN")              # Ej: abcdef123456
-OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP")        # Número de la dueña (sin +, ej: 573167913339)
-BASE_URL = os.getenv("BASE_URL", "https://bot-telegram-production-3cc3.up.railway.app")
+# --- VARIABLES DE ENTORNO (Z-API) ---
+ZAPI_API_KEY = os.getenv("ZAPI_API_KEY")
+ZAPI_INSTANCE_ID = os.getenv("ZAPI_INSTANCE_ID")
+OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP")  # Número de la dueña (sin +, ej: 573167913339)
+BASE_URL = os.getenv("BASE_URL", "https://tu-bot.up.railway.app")
 
 # --- CARPETAS ---
 OUTPUT_DIR = "generados"
@@ -28,25 +28,22 @@ TEMPLATES_DIR = Path("templates")
 # --- SESIONES ---
 user_sessions = {}
 
-# --- FUNCIONES DE ULTRAMSG ---
+# --- FUNCIONES DE Z-API ---
 def enviar_whatsapp(numero, mensaje):
-    """Envía un mensaje de texto usando Ultramsg API"""
-    url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/chat"
+    """Envía un mensaje de texto usando Z-API"""
+    url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_API_KEY}/send-text"
     payload = {
-        "token": ULTRA_TOKEN,
-        "to": numero,
-        "body": mensaje
+        "phone": numero,  # Número sin +
+        "message": mensaje
     }
     headers = {"Content-Type": "application/json"}
-    
     try:
         response = requests.post(url, data=json.dumps(payload), headers=headers)
         if response.status_code == 200:
             logger.info(f"Mensaje enviado a {numero}")
-            return response.json()
         else:
             logger.error(f"Error al enviar: {response.text}")
-            return None
+        return response
     except Exception as e:
         logger.error(f"Error: {e}")
         return None
@@ -62,6 +59,7 @@ def obtener_saludo():
         return "Buenas noches"
 
 def generar_word(answers, folder, config_data):
+    """Genera el Word y devuelve la ruta del archivo"""
     template_path = TEMPLATES_DIR / folder / config_data["template_file"]
     if not template_path.exists():
         raise FileNotFoundError(f"Plantilla no encontrada: {template_path}")
@@ -78,16 +76,20 @@ def generar_word(answers, folder, config_data):
 # --- ENDPOINT PARA DESCARGAR ---
 @app.route("/descargar/<filename>", methods=["GET"])
 def descargar_archivo(filename):
-    return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
+    try:
+        return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
+    except Exception as e:
+        logger.error(f"Error al descargar {filename}: {e}")
+        return "Archivo no encontrado", 404
 
-# --- ENDPOINT PARA RECIBIR MENSAJES (WEBHOOK) ---
+# --- ENDPOINT PARA RECIBIR MENSAJES ---
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    """Recibe mensajes de Ultramsg"""
+    """Recibe mensajes de Z-API"""
     data = request.get_json()
     logger.info(f"Mensaje recibido: {data}")
     
-    # Extraer datos del mensaje
+    # Extraer datos del mensaje (formato de Z-API)
     if "data" in data:
         message_data = data["data"]
         incoming_msg = message_data.get("body", "").strip()
@@ -116,14 +118,13 @@ def webhook():
                     return "OK", 200
                 
                 saludo = obtener_saludo()
-                menu = f"Hola, {saludo}. Soy el asistente de la Papeleria Lider.\n\nQue vas a hacer?\n"
+                menu = f"Hola, {saludo}. Soy el asistente de la Papeleria Lider.\n\nQue tipo de documento necesitas?\n"
                 for i, t in enumerate(templates, 1):
                     menu += f"{i}. {t['name']}\n"
                 menu += "\nResponde con el numero de la opcion."
                 
                 enviar_whatsapp(sender, menu)
                 session["estado"] = "SELECT_TEMPLATE"
-                logger.info("Menu enviado")
                 return "OK", 200
             
             # ========== SELECCIONAR PLANTILLA ==========
@@ -182,24 +183,25 @@ def webhook():
                         answers = session["answers"]
                         folder = session["template_folder"]
                         
+                        # Generar el Word
                         output_path, output_filename = generar_word(answers, folder, config_data)
                         descarga_url = f"{BASE_URL}/descargar/{output_filename}"
                         
-                        # Mensaje para el cliente
-                        enviar_whatsapp(sender, "Solicitud enviada correctamente!\n\nLa encargada de la Papeleria Lider revisara tu documento y te contactara en breve.\nGracias por usar nuestro servicio.")
-                        
-                        # Enviar a la duena
+                        # --- ENVIAR SOLO A LA DUEÑA (con el enlace de descarga) ---
                         if OWNER_WHATSAPP:
-                            mensaje_duena = f"Nuevo documento generado\n\nSolicitado por: {sender}\nPlaca: {answers.get('placa', 'N/A')}\nPropietario: {answers.get('nombre_vendedor', 'N/A')}\n\nDescarga: {descarga_url}"
+                            mensaje_duena = f"📄 Nuevo documento generado\n\nSolicitado por: {sender}\nPlaca: {answers.get('placa', 'N/A')}\nPropietario: {answers.get('nombre_vendedor', 'N/A')}\n\nDescarga: {descarga_url}"
                             enviar_whatsapp(OWNER_WHATSAPP, mensaje_duena)
-                            logger.info(f"Mensaje enviado a duena: {OWNER_WHATSAPP}")
+                            logger.info(f"Documento enviado a la dueña: {OWNER_WHATSAPP}")
+                        
+                        # --- MENSAJE PARA EL CLIENTE (sin archivo) ---
+                        enviar_whatsapp(sender, "✅ Solicitud enviada correctamente!\n\nLa encargada de la Papeleria Lider revisara tu documento y te contactara en breve.\nGracias por usar nuestro servicio.")
                         
                         session.clear()
                         session["estado"] = "START"
                         
                     except Exception as e:
                         logger.error(f"Error al generar: {e}")
-                        enviar_whatsapp(sender, f"Error al generar el documento: {str(e)}")
+                        enviar_whatsapp(sender, f"❌ Error al generar el documento: {str(e)}")
                         session.clear()
                         session["estado"] = "START"
                     return "OK", 200
@@ -222,7 +224,7 @@ def webhook():
             
         except Exception as e:
             logger.error(f"Error: {e}")
-            enviar_whatsapp(sender, "Ocurrio un error. Intenta de nuevo.")
+            enviar_whatsapp(sender, "❌ Ocurrio un error. Intenta de nuevo.")
             session.clear()
             session["estado"] = "START"
             return "OK", 200

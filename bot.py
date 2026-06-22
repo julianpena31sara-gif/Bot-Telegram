@@ -81,14 +81,14 @@ def obtener_saludo():
     else:
         return "Buenas noches"
 
-def generar_word(answers, folder="poder_vehiculo"):
+def generar_word(answers, folder="traspaso_moto"):
     """Genera el Word con los datos y devuelve la ruta y nombre del archivo"""
     template_path = TEMPLATES_DIR / folder / "template.docx"
     if not template_path.exists():
         raise FileNotFoundError(f"Plantilla no encontrada: {template_path}")
     
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filename = f"Poder_{answers.get('placa', 'sin_placa')}_{now}.docx"
+    output_filename = f"Traspaso_{answers.get('placa', 'sin_placa')}_{now}.docx"
     output_path = Path(OUTPUT_DIR) / output_filename
     
     doc = DocxTemplate(str(template_path))

@@ -58,10 +58,11 @@ def webhook():
         sender = message_data.get("from", "").replace("+", "")
         sender_name = message_data.get("name", sender)
         
-        # ========== FILTRO PARA LA DUEÑA ==========
-        # Si el mensaje viene de la dueña, lo ignoramos completamente
+        # ========== FILTRO CRÍTICO: IGNORAR MENSAJES DEL NÚMERO CONECTADO ==========
+        # El número conectado a Ultramsg es el que envía los mensajes automáticos.
+        # Debemos ignorar TODOS los mensajes que vengan de ese número.
         if OWNER_WHATSAPP and sender == OWNER_WHATSAPP:
-            logger.info(f"Ignorando mensaje de la dueña ({sender}): {incoming_msg}")
+            logger.info(f"🔇 Ignorando mensaje del número conectado ({sender}): {incoming_msg}")
             return "OK", 200
         
         logger.info(f"Mensaje de {sender_name} ({sender}): {incoming_msg}")

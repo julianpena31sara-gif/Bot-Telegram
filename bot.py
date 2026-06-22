@@ -14,11 +14,10 @@ app = Flask(__name__)
 # --- VARIABLES DE ENTORNO ---
 ULTRA_INSTANCE_ID = os.getenv("ULTRA_INSTANCE_ID")
 ULTRA_TOKEN = os.getenv("ULTRA_TOKEN")
-OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP")  # Número de la dueña (DIFERENTE al conectado)
+OWNER_WHATSAPP = "573247247478"  # Número de la dueña
 
-# --- EL NÚMERO CONECTADO A ULTRAMSG (YA PUESTO) ---
-# Este es el número que escaneaste el QR en Ultramsg
-CONNECTED_NUMBER = "573167913339"  # <--- NÚMERO CONECTADO
+# --- EL NÚMERO CONECTADO A ULTRAMSG ---
+CONNECTED_NUMBER = "573167913339"
 
 # --- FUNCIONES DE ULTRAMSG ---
 def enviar_whatsapp(numero, mensaje):
@@ -62,14 +61,19 @@ def webhook():
         sender = message_data.get("from", "").replace("+", "")
         sender_name = message_data.get("name", sender)
         
-        # ========== FILTRO CRÍTICO: IGNORAR MENSAJES DEL NÚMERO CONECTADO ==========
+        # ========== FILTRO MEJORADO: IGNORAR MENSAJES DEL NÚMERO CONECTADO ==========
+        # El número conectado a Ultramsg puede llegar en diferentes formatos
+        # Comparamos sin importar el formato (con y sin +)
+        connected_clean = CONNECTED_NUMBER.replace("+", "").replace(" ", "")
+        sender_clean = sender.replace("+", "").replace(" ", "")
+        
         # Si el mensaje viene del número conectado a Ultramsg, lo ignoramos COMPLETAMENTE
-        if sender == CONNECTED_NUMBER:
+        if sender_clean == connected_clean:
             logger.info(f"🔇 IGNORANDO mensaje del número conectado ({sender}): {incoming_msg}")
             return "OK", 200
         
-        # Si el número de la dueña es diferente al conectado, también lo ignoramos
-        if OWNER_WHATSAPP and sender == OWNER_WHATSAPP:
+        # Si el mensaje viene de la dueña, lo ignoramos (ella solo recibe documentos)
+        if OWNER_WHATSAPP and sender_clean == OWNER_WHATSAPP.replace("+", "").replace(" ", ""):
             logger.info(f"🔇 IGNORANDO mensaje de la dueña ({sender}): {incoming_msg}")
             return "OK", 200
         
@@ -161,9 +165,8 @@ def webhook():
                 enviar_whatsapp(sender, mensaje_cliente)
                 
                 # Notificar a la dueña
-                if OWNER_WHATSAPP:
-                    mensaje_duena = f"📄 Nuevo documento generado\n\nSolicitado por: {sender}\nPlaca: {answers.get('placa', 'N/A')}\nPropietario: {answers.get('nombre_vendedor', 'N/A')}"
-                    enviar_whatsapp(OWNER_WHATSAPP, mensaje_duena)
+                mensaje_duena = f"📄 Nuevo documento generado\n\nSolicitado por: {sender}\nPlaca: {answers.get('placa', 'N/A')}\nPropietario: {answers.get('nombre_vendedor', 'N/A')}"
+                enviar_whatsapp(OWNER_WHATSAPP, mensaje_duena)
                 
                 user_sessions.pop(sender, None)
                 return "OK", 200

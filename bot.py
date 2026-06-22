@@ -42,48 +42,52 @@ def obtener_saludo():
     else:
         return "Buenas noches"
 
-# --- SESIONES EN MEMORIA (para mantener el estado de cada usuario) ---
+# --- SESIONES EN MEMORIA ---
 user_sessions = {}
 
 # --- ENDPOINT PRINCIPAL ---
 @app.route("/webhook", methods=["POST"])
 def webhook():
     """Recibe mensajes de Ultramsg y responde rápidamente"""
-    # Responder a Ultramsg INMEDIATAMENTE (antes de procesar)
-    # Esto evita que Ultramsg muestre "I don't know this command"
-    
     data = request.get_json()
     logger.info(f"Mensaje recibido: {data}")
     
     if data and "data" in data:
-        # Extraer datos del mensaje
         message_data = data["data"]
         incoming_msg = message_data.get("body", "").strip()
         sender = message_data.get("from", "").replace("+", "")
         sender_name = message_data.get("name", sender)
         
+        # ========== FILTRO PARA LA DUEÑA ==========
+        # Si el mensaje viene de la dueña, lo ignoramos completamente
+        if OWNER_WHATSAPP and sender == OWNER_WHATSAPP:
+            logger.info(f"Ignorando mensaje de la dueña ({sender}): {incoming_msg}")
+            return "OK", 200
+        
         logger.info(f"Mensaje de {sender_name} ({sender}): {incoming_msg}")
         
-        # ========== RESPUESTA RÁPIDA ==========
-        # Si el mensaje es "hola", respondemos con el menú
+        # ========== MENÚ PRINCIPAL ==========
         if incoming_msg.lower() == "hola":
             saludo = obtener_saludo()
             menu = f"Hola, {saludo}. Soy el asistente de la Papeleria Lider.\n\nQue tipo de documento necesitas?\n1. Poder para Tramite de Vehiculo\n\nResponde con el numero de la opcion."
             enviar_whatsapp(sender, menu)
+            # Inicializar sesión
+            if sender not in user_sessions:
+                user_sessions[sender] = {
+                    "estado": "SELECT_TEMPLATE",
+                    "step": 0,
+                    "answers": {}
+                }
             return "OK", 200
         
-        # Si el mensaje es "1" (selecciona el documento)
+        # ========== SELECCIONAR PLANTILLA ==========
         if incoming_msg == "1":
             enviar_whatsapp(sender, "Perfecto! Necesito algunos datos para generar el documento.\n\nEscribe el DIA de la fecha (ej: 10):")
-            # Guardar estado del usuario (para futuros mensajes)
             if sender not in user_sessions:
                 user_sessions[sender] = {"estado": "ASKING_DATA", "step": 0, "answers": {}}
-            return "OK", 200
-        
-        # Si el mensaje es "cancelar", reiniciamos
-        if incoming_msg.lower() in ["cancelar", "cancel"]:
-            enviar_whatsapp(sender, "Operacion cancelada. Escribe 'hola' para comenzar de nuevo.")
-            user_sessions.pop(sender, None)
+            else:
+                user_sessions[sender]["estado"] = "ASKING_DATA"
+                user_sessions[sender]["step"] = 0
             return "OK", 200
         
         # ========== PREGUNTAS DEL DOCUMENTO ==========
@@ -106,7 +110,7 @@ def webhook():
                 {"key": "placa", "question": "Escribe la PLACA del vehiculo:"}
             ]
             
-            # Guardar respuesta
+            # Guardar respuesta (si hay una pregunta actual)
             if step < len(fields):
                 field_key = fields[step]["key"]
                 answers[field_key] = incoming_msg
@@ -127,6 +131,16 @@ def webhook():
                     summary += "\nEstan correctos? Responde SI o NO."
                     enviar_whatsapp(sender, summary)
                     return "OK", 200
+            else:
+                # Si step >= len(fields), pero el estado no se actualizó, forzar revisión
+                session["estado"] = "REVIEW_DATA"
+                summary = "REVISION DE DATOS\n\n"
+                for key, value in answers.items():
+                    clean_key = key.replace("_", " ").title()
+                    summary += f"{clean_key}: {value}\n"
+                summary += "\nEstan correctos? Responde SI o NO."
+                enviar_whatsapp(sender, summary)
+                return "OK", 200
         
         # ========== CONFIRMACION ==========
         if sender in user_sessions and user_sessions[sender]["estado"] == "REVIEW_DATA":
@@ -157,7 +171,6 @@ def webhook():
         enviar_whatsapp(sender, "No entendi tu mensaje. Escribe 'hola' para comenzar.")
         return "OK", 200
     
-    # Si no hay datos, responder OK igualmente
     return "OK", 200
 
 # --- INICIO ---

@@ -4,7 +4,7 @@
   "fields": [
     {"key": "dia", "question": "Escribe el DIA de la fecha (ej: 10):"},
     {"key": "mes", "question": "Escribe el MES en letras (ej: octubre):"},
-    {"key": "año", "question": "Escribe el ANIO (ej: 2024):"},
+    {"key": "año", "question": "Escribe el AÑO (ej: 2024):"},
     {"key": "entidad_destino", "question": "Escribe la ENTIDAD a la que va dirigido:"},
     {"key": "nombre_vendedor", "question": "Escribe el NOMBRE COMPLETO del propietario actual:"},
     {"key": "cedula_vendedor", "question": "Escribe la CEDULA del propietario:"},

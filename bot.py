@@ -14,7 +14,7 @@ app = Flask(__name__)
 # --- VARIABLES DE ENTORNO ---
 ULTRA_INSTANCE_ID = os.getenv("ULTRA_INSTANCE_ID")
 ULTRA_TOKEN = os.getenv("ULTRA_TOKEN")
-OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP")  # Número de la dueña (sin +)
+OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP")  # Número de la dueña (DIFERENTE al conectado)
 
 # --- FUNCIONES DE ULTRAMSG ---
 def enviar_whatsapp(numero, mensaje):
@@ -59,10 +59,18 @@ def webhook():
         sender_name = message_data.get("name", sender)
         
         # ========== FILTRO CRÍTICO: IGNORAR MENSAJES DEL NÚMERO CONECTADO ==========
-        # El número conectado a Ultramsg es el que envía los mensajes automáticos.
-        # Debemos ignorar TODOS los mensajes que vengan de ese número.
-        if OWNER_WHATSAPP and sender == OWNER_WHATSAPP:
+        # IMPORTANTE: El número conectado a Ultramsg es el que envía los mensajes automáticos.
+        # Para saber cuál es, consulta el panel de Ultramsg (no está en las variables de entorno).
+        # Si no sabes cuál es, en los logs verás el número que aparece como "sender" cuando el bot se envía a sí mismo.
+        # Una vez identificado, lo agregas aquí.
+        CONNECTED_NUMBER = "573167913339"  # <--- REEMPLAZA CON EL NÚMERO CONECTADO A ULTRAMSG
+        if sender == CONNECTED_NUMBER:
             logger.info(f"🔇 Ignorando mensaje del número conectado ({sender}): {incoming_msg}")
+            return "OK", 200
+        
+        # Si el número de la dueña es diferente al conectado, también lo ignoramos
+        if OWNER_WHATSAPP and sender == OWNER_WHATSAPP:
+            logger.info(f"🔇 Ignorando mensaje de la dueña ({sender}): {incoming_msg}")
             return "OK", 200
         
         logger.info(f"Mensaje de {sender_name} ({sender}): {incoming_msg}")

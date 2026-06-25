@@ -11,7 +11,6 @@ from bs4 import BeautifulSoup
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
-import time
 import re
 
 # --- CONFIGURACIÓN ---
@@ -36,7 +35,6 @@ user_sessions = {}
 
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
-    """Envía un mensaje de texto usando Ultramsg"""
     url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/chat"
     payload = {"token": ULTRA_TOKEN, "to": numero, "body": mensaje}
     try:
@@ -51,7 +49,6 @@ def enviar_whatsapp(numero, mensaje):
         return None
 
 def enviar_documento_ultramsg(numero, archivo_path, nombre_archivo):
-    """Envía un documento usando la URL pública generada por Railway"""
     descarga_url = f"{BASE_URL}/descargar/{nombre_archivo}"
     url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/document"
     payload = {
@@ -82,147 +79,98 @@ def obtener_saludo():
     else:
         return "Buenas noches"
 
-# ========== FUNCIONES DE SISBÉN (VÍA API) ==========
-def mapear_tipo_documento(tipo_input):
+# ========== FUNCIÓN DE CONSULTA SISBÉN (POST A LA PÁGINA) ==========
+def consultar_sisben_post(tipo_documento, numero_documento):
     """
-    Convierte el tipo de documento ingresado por el cliente al ID numérico de la API
+    Consulta el Sisbén enviando un POST a la página principal
     """
-    tipo_input = tipo_input.upper().strip()
+    logger.info(f"🔍 Consultando Sisbén para {tipo_documento}: {numero_documento}")
     
-    mapeo = {
-        "RC": "1",
-        "REGISTRO CIVIL": "1",
-        "TI": "2",
-        "TARJETA DE IDENTIDAD": "2",
+    # Mapear tipo de documento al valor del SELECT
+    tipo_map = {
         "CC": "3",
         "CEDULA DE CIUDADANIA": "3",
         "CE": "4",
         "CEDULA DE EXTRANJERIA": "4",
+        "TI": "2",
+        "TARJETA DE IDENTIDAD": "2",
+        "RC": "1",
+        "REGISTRO CIVIL": "1",
         "DNI": "5",
-        "DNI(PAIS DE ORIGEN)": "5",
         "PASAPORTE": "6",
-        "DNI(PASAPORTE)": "6",
-        "SALVO CONDUCTO": "7",
         "PEP": "8",
-        "PERMISO ESPECIAL": "8",
-        "PPT": "9",
-        "PERMISO PROTECCION": "9"
+        "PPT": "9"
     }
     
-    for key, value in mapeo.items():
-        if tipo_input == key or tipo_input in key or key in tipo_input:
-            return value
+    tipo_id = tipo_map.get(tipo_documento.upper().strip(), "3")
+    logger.info(f"📝 Tipo ID: {tipo_id}")
     
-    return "3"  # Por defecto, Cédula de Ciudadanía
-
-def consultar_sisben_api(tipo_documento, numero_documento):
-    """
-    Consulta la API del Sisbén (sin reCAPTCHA)
-    """
-    logger.info(f"🔍 Consultando Sisbén vía API para {tipo_documento}: {numero_documento}")
+    # URL de la página de consulta
+    url = "https://www.sisben.gov.co/Paginas/consulta-tu-grupo.html"
     
-    tipo_id = mapear_tipo_documento(tipo_documento)
-    logger.info(f"📝 Tipo de documento: {tipo_documento} -> ID: {tipo_id}")
-    
+    # Headers como navegador real
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json, text/plain, */*",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "https://www.sisben.gov.co",
         "Referer": "https://www.sisben.gov.co/Paginas/consulta-tu-grupo.html",
-        "Accept-Language": "es-ES,es;q=0.9"
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin"
     }
     
-    # Lista de posibles URLs de la API
-    urls = [
-        f"https://www.sisben.gov.co/API/Consulta?tipo={tipo_id}&documento={numero_documento}",
-        f"https://www.sisben.gov.co/Sisben/Consulta?tipo={tipo_id}&documento={numero_documento}",
-        f"https://www.sisben.gov.co/_vti_bin/ListData.svc/ConsultaSisben?tipo={tipo_id}&documento={numero_documento}"
-    ]
+    # Datos del formulario
+    data = {
+        "TipoID": tipo_id,
+        "documento": numero_documento,
+        "btnBuscar": "Consultar"
+    }
     
-    for url in urls:
-        try:
-            logger.info(f"📡 Intentando URL: {url}")
-            response = requests.get(url, headers=headers, timeout=15)
-            
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    logger.info(f"✅ Datos recibidos: {data}")
-                    
-                    if data and "error" not in str(data).lower():
-                        return extraer_datos_api(data, tipo_documento, numero_documento)
-                except json.JSONDecodeError:
-                    logger.warning("⚠️ La respuesta no es JSON, intentando con HTML")
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    texto = soup.get_text()
-                    if "no se encontraron resultados" not in texto.lower():
-                        return extraer_datos_html(texto, tipo_documento, numero_documento)
-        except Exception as e:
-            logger.warning(f"⚠️ Error en URL {url}: {e}")
-    
-    # Último intento: POST a la página principal
     try:
-        logger.info("📡 Intentando con POST a la página principal...")
-        url = "https://www.sisben.gov.co/Paginas/consulta-tu-grupo.html"
-        payload = {
-            "TipoID": tipo_id,
-            "documento": numero_documento,
-            "btnBuscar": "Consultar"
-        }
-        response = requests.post(url, data=payload, headers=headers, timeout=15)
+        # Enviar la solicitud POST
+        logger.info("📡 Enviando solicitud POST...")
+        response = requests.post(url, data=data, headers=headers, timeout=15)
+        
+        logger.info(f"📊 Código de respuesta: {response.status_code}")
+        
         if response.status_code == 200:
+            # Parsear el HTML
             soup = BeautifulSoup(response.text, 'html.parser')
             texto = soup.get_text()
-            if "no se encontraron resultados" not in texto.lower():
+            
+            # Guardar HTML para depuración
+            try:
+                with open("sisben_resultado.html", "w", encoding="utf-8") as f:
+                    f.write(response.text)
+                logger.info("📁 HTML guardado para depuración")
+            except:
+                pass
+            
+            # Verificar si hay mensaje de error
+            if "no se encontraron resultados" in texto.lower():
+                logger.warning("❌ No se encontraron resultados")
+                return None
+            
+            # Verificar si hay datos
+            if "registro válido" in texto.lower() or "datos personales" in texto.lower():
                 return extraer_datos_html(texto, tipo_documento, numero_documento)
-    except Exception as e:
-        logger.warning(f"⚠️ Error en POST: {e}")
-    
-    logger.error("❌ No se pudo obtener información del Sisbén")
-    return None
-
-def extraer_datos_api(data, tipo_documento, numero_documento):
-    """Extrae los datos del JSON de la API"""
-    try:
-        # Si los datos vienen en una lista
-        if isinstance(data, list) and len(data) > 0:
-            data = data[0]
-        
-        # Si los datos vienen en un objeto anidado
-        if "data" in data:
-            data = data["data"]
-        if "resultado" in data:
-            data = data["resultado"]
-        
-        datos = {
-            "nombres": data.get("nombres", data.get("Nombres", data.get("Nombre", "No disponible"))),
-            "apellidos": data.get("apellidos", data.get("Apellidos", data.get("Apellido", "No disponible"))),
-            "tipo_documento": tipo_documento,
-            "numero_documento": numero_documento,
-            "municipio": data.get("municipio", data.get("Municipio", "No disponible")),
-            "departamento": data.get("departamento", data.get("Departamento", "No disponible")),
-            "grupo": data.get("grupo", data.get("Grupo", data.get("grupoSisben", "No disponible"))),
-            "categoria": data.get("categoria", data.get("Categoria", data.get("categoriaSisben", "No disponible"))),
-            "fecha_encuesta": data.get("fechaEncuesta", data.get("FechaEncuesta", "No disponible")),
-            "fecha_actualizacion": data.get("fechaActualizacion", data.get("FechaActualizacion", "No disponible")),
-            "nombre_administrador": data.get("nombreAdministrador", data.get("NombreAdministrador", "No disponible")),
-            "direccion_oficina": data.get("direccionOficina", data.get("DireccionOficina", "No disponible")),
-            "telefono_oficina": data.get("telefonoOficina", data.get("TelefonoOficina", "No disponible")),
-            "email_oficina": data.get("emailOficina", data.get("EmailOficina", "No disponible")),
-            "fecha_consulta": datetime.now().strftime("%d/%m/%Y %H:%M")
-        }
-        
-        # Verificar si se encontraron datos reales
-        if datos["nombres"] == "No disponible" and datos["apellidos"] == "No disponible":
-            logger.warning("⚠️ No se encontraron datos personales en la API")
+            else:
+                # Buscar si hay algún dato visible
+                logger.warning("⚠️ No se encontraron datos personales en la respuesta")
+                logger.info(f"📄 Texto de la página (primeros 300 caracteres):\n{texto[:300]}")
+                return None
+        else:
+            logger.error(f"❌ Error HTTP: {response.status_code}")
             return None
             
-        return datos
     except Exception as e:
-        logger.error(f"Error al parsear API: {e}")
+        logger.error(f"❌ Error en la consulta: {e}")
         return None
 
 def extraer_datos_html(texto, tipo_documento, numero_documento):
-    """Extrae datos del HTML usando expresiones regulares"""
+    """Extrae los datos del HTML usando expresiones regulares"""
     datos = {
         "nombres": "No disponible",
         "apellidos": "No disponible",
@@ -241,6 +189,7 @@ def extraer_datos_html(texto, tipo_documento, numero_documento):
         "fecha_consulta": datetime.now().strftime("%d/%m/%Y %H:%M")
     }
     
+    # Patrones de búsqueda
     patrones = {
         "nombres": r'Nombres?[:\s]+([A-ZÁÉÍÓÚÑ\s.]+)',
         "apellidos": r'Apellidos?[:\s]+([A-ZÁÉÍÓÚÑ\s.]+)',
@@ -258,7 +207,7 @@ def extraer_datos_html(texto, tipo_documento, numero_documento):
             datos[key] = match.group(1).strip()
             logger.info(f"✅ {key}: {datos[key]}")
     
-    # Buscar información de la oficina
+    # Información de la oficina
     match = re.search(r'Nombre administrador[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)', texto, re.IGNORECASE)
     if match:
         datos["nombre_administrador"] = match.group(1).strip()
@@ -275,22 +224,24 @@ def extraer_datos_html(texto, tipo_documento, numero_documento):
     if match:
         datos["email_oficina"] = match.group(1).strip()
     
+    # Verificar si se encontraron datos
+    if datos["nombres"] == "No disponible" and datos["apellidos"] == "No disponible":
+        logger.warning("❌ No se encontraron datos personales")
+        return None
+    
     return datos
 
-# ========== FUNCIÓN PARA GENERAR PDF DE SISBÉN ==========
+# ========== GENERAR PDF ==========
 def generar_pdf_sisben(datos, output_path):
-    """Genera un PDF con el formato del Sisbén"""
     c = canvas.Canvas(output_path, pagesize=letter)
     width, height = letter
     
     y = height - 40
     
-    # Fecha de consulta
     c.setFont("Helvetica", 8)
     fecha_consulta = datos.get("fecha_consulta", datetime.now().strftime("%d/%m/%Y %H:%M"))
     c.drawRightString(width - 50, y, f"Fecha de consulta: {fecha_consulta}")
     
-    # Ficha
     c.setFont("Helvetica-Bold", 8)
     c.drawString(50, y, "Ficha:")
     c.setFont("Helvetica", 8)
@@ -298,13 +249,11 @@ def generar_pdf_sisben(datos, output_path):
     
     y -= 30
     
-    # Estado
     c.setFont("Helvetica-Bold", 12)
     c.setFillColor(colors.Color(0.0, 0.5, 0.0))
     c.drawString(50, y, "Registro válido")
     y -= 20
     
-    # Grupo y categoría
     c.setFont("Helvetica-Bold", 24)
     c.setFillColor(colors.Color(0.2, 0.4, 0.6))
     c.drawString(50, y, datos.get("grupo", "N/A"))
@@ -313,7 +262,6 @@ def generar_pdf_sisben(datos, output_path):
     c.drawString(150, y + 10, datos.get("categoria", "N/A"))
     y -= 40
     
-    # Datos personales
     c.setFont("Helvetica-Bold", 12)
     c.setFillColor(colors.Color(0.1, 0.3, 0.5))
     c.drawString(50, y, "DATOS PERSONALES")
@@ -334,7 +282,6 @@ def generar_pdf_sisben(datos, output_path):
     c.drawString(50, y, f"Departamento: {datos.get('departamento', 'No disponible')}")
     y -= 25
     
-    # Información administrativa
     c.setFont("Helvetica-Bold", 12)
     c.setFillColor(colors.Color(0.1, 0.3, 0.5))
     c.drawString(50, y, "INFORMACIÓN ADMINISTRATIVA")
@@ -347,7 +294,6 @@ def generar_pdf_sisben(datos, output_path):
     c.drawString(50, y, f"Última actualización ciudadano: {datos.get('fecha_actualizacion', 'No disponible')}")
     y -= 30
     
-    # Contacto oficina
     c.setFont("Helvetica-Bold", 12)
     c.setFillColor(colors.Color(0.1, 0.3, 0.5))
     c.drawString(50, y, "Contacto Oficina SISBEN")
@@ -364,7 +310,6 @@ def generar_pdf_sisben(datos, output_path):
     c.drawString(50, y, f"Correo Electrónico: {datos.get('email_oficina', 'No disponible')}")
     y -= 30
     
-    # Pie de página
     c.setFont("Helvetica", 8)
     c.setFillColor(colors.gray)
     c.drawString(50, 50, "*Si encuentra alguna inconsistencia o desea actualizar su información por favor acérquese a la oficina del Sisbén del municipio donde reside actualmente")
@@ -375,7 +320,6 @@ def generar_pdf_sisben(datos, output_path):
 
 # ========== FUNCIONES DE PLANTILLAS ==========
 def generar_word(answers, folder="poder_vehiculo"):
-    """Genera el Word con los datos y devuelve la ruta y nombre del archivo"""
     template_path = TEMPLATES_DIR / folder / "template.docx"
     if not template_path.exists():
         template_path = Path("template.docx")
@@ -404,7 +348,6 @@ def descargar_archivo(filename):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    """Recibe mensajes de Ultramsg y responde rápidamente"""
     data = request.get_json()
     logger.info(f"Mensaje recibido: {data}")
     
@@ -427,7 +370,6 @@ def webhook():
         
         logger.info(f"Mensaje de {sender_name} ({sender_clean}): {incoming_msg}")
         
-        # --- MENÚ PRINCIPAL ---
         if incoming_msg.lower() == "hola":
             saludo = obtener_saludo()
             menu = f"Hola, {saludo}. Soy el asistente de la Papeleria Lider.\n\nQue tipo de documento necesitas?\n1. Poder para Tramite de Vehiculo\n2. Certificado de Sisbén\n3. Certificado de ADRES\n\nResponde con el numero de la opcion."
@@ -436,8 +378,7 @@ def webhook():
                 user_sessions[sender_clean] = {"estado": "SELECT_TEMPLATE", "step": 0, "answers": {}}
             return "OK", 200
         
-        # --- SELECCIONAR PLANTILLA ---
-        if incoming_msg == "1":  # Poder para Trámite de Vehículo
+        if incoming_msg == "1":
             enviar_whatsapp(sender_clean, "Perfecto! Necesito algunos datos para generar el documento.\n\nEscribe el DIA de la fecha (ej: 10):")
             if sender_clean not in user_sessions:
                 user_sessions[sender_clean] = {"estado": "ASKING_DATA", "step": 0, "answers": {}}
@@ -446,8 +387,7 @@ def webhook():
                 user_sessions[sender_clean]["step"] = 0
             return "OK", 200
         
-        # --- SISBÉN ---
-        if incoming_msg == "2":  # Certificado de Sisbén
+        if incoming_msg == "2":
             enviar_whatsapp(sender_clean, "Escribe el TIPO de documento (ej: CC, CE, TI):\nOpciones: CC, CE, TI, DNI, Pasaporte, PEP, PPT")
             if sender_clean not in user_sessions:
                 user_sessions[sender_clean] = {"estado": "ASKING_SISBEN_TIPO", "step": 0, "answers": {}}
@@ -455,7 +395,6 @@ def webhook():
                 user_sessions[sender_clean]["estado"] = "ASKING_SISBEN_TIPO"
             return "OK", 200
         
-        # --- PREGUNTAS DEL DOCUMENTO (PODER) ---
         if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "ASKING_DATA":
             session = user_sessions[sender_clean]
             step = session["step"]
@@ -502,7 +441,6 @@ def webhook():
                 enviar_whatsapp(sender_clean, summary)
                 return "OK", 200
         
-        # --- PREGUNTAS DE SISBÉN ---
         if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "ASKING_SISBEN_TIPO":
             session = user_sessions[sender_clean]
             session["answers"]["tipo_documento"] = incoming_msg
@@ -518,7 +456,7 @@ def webhook():
             enviar_whatsapp(sender_clean, "⏳ Consultando información en el Sisbén...")
             
             try:
-                datos = consultar_sisben_api(tipo_doc, num_doc)
+                datos = consultar_sisben_post(tipo_doc, num_doc)
                 
                 if datos:
                     output_filename = f"Sisben_{num_doc}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -540,7 +478,6 @@ def webhook():
             user_sessions.pop(sender_clean, None)
             return "OK", 200
         
-        # --- CONFIRMACIÓN (PODER) ---
         if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "REVIEW_DATA":
             if incoming_msg.lower() in ["si", "sí", "yes"]:
                 try:
@@ -569,7 +506,6 @@ def webhook():
                 enviar_whatsapp(sender_clean, "Responde SI para generar el documento o NO para cancelar.")
                 return "OK", 200
         
-        # --- FALLBACK ---
         enviar_whatsapp(sender_clean, "No entendi tu mensaje. Escribe 'hola' para comenzar.")
         return "OK", 200
     

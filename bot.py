@@ -79,98 +79,117 @@ def obtener_saludo():
     else:
         return "Buenas noches"
 
-# ========== FUNCIÓN DE CONSULTA SISBÉN (POST A LA PÁGINA) ==========
+# ========== FUNCIONES DE SISBÉN (CON reportes.sisben.gov.co) ==========
+def mapear_tipo_documento(tipo_input):
+    tipo_input = tipo_input.upper().strip()
+    mapeo = {
+        "RC": "1", "REGISTRO CIVIL": "1",
+        "TI": "2", "TARJETA DE IDENTIDAD": "2",
+        "CC": "3", "CEDULA DE CIUDADANIA": "3",
+        "CE": "4", "CEDULA DE EXTRANJERIA": "4",
+        "DNI": "5", "PASAPORTE": "6",
+        "PEP": "8", "PPT": "9"
+    }
+    for key, value in mapeo.items():
+        if tipo_input == key or tipo_input in key or key in tipo_input:
+            return value
+    return "3"
+
 def consultar_sisben_post(tipo_documento, numero_documento):
-    """
-    Consulta el Sisbén enviando un POST a la página principal
-    """
+    """Consulta el Sisbén usando reportes.sisben.gov.co"""
     logger.info(f"🔍 Consultando Sisbén para {tipo_documento}: {numero_documento}")
     
-    # Mapear tipo de documento al valor del SELECT
-    tipo_map = {
-        "CC": "3",
-        "CEDULA DE CIUDADANIA": "3",
-        "CE": "4",
-        "CEDULA DE EXTRANJERIA": "4",
-        "TI": "2",
-        "TARJETA DE IDENTIDAD": "2",
-        "RC": "1",
-        "REGISTRO CIVIL": "1",
-        "DNI": "5",
-        "PASAPORTE": "6",
-        "PEP": "8",
-        "PPT": "9"
-    }
-    
-    tipo_id = tipo_map.get(tipo_documento.upper().strip(), "3")
+    tipo_id = mapear_tipo_documento(tipo_documento)
     logger.info(f"📝 Tipo ID: {tipo_id}")
     
-    # URL de la página de consulta
-    url = "https://www.sisben.gov.co/Paginas/consulta-tu-grupo.html"
-    
-    # Headers como navegador real
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "es-ES,es;q=0.9",
+        "Content-Type": "application/json",
         "Origin": "https://www.sisben.gov.co",
-        "Referer": "https://www.sisben.gov.co/Paginas/consulta-tu-grupo.html",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin"
+        "Referer": "https://www.sisben.gov.co/Paginas/consulta-tu-grupo.html"
     }
     
-    # Datos del formulario
-    data = {
-        "TipoID": tipo_id,
-        "documento": numero_documento,
-        "btnBuscar": "Consultar"
-    }
+    # Intentar diferentes URLs
+    urls = [
+        ("https://reportes.sisben.gov.co/api/consulta", "json"),
+        ("https://reportes.sisben.gov.co/consulta/ciudadano", "form"),
+        ("https://reportes.sisben.gov.co/api/ciudadano", "json")
+    ]
     
-    try:
-        # Enviar la solicitud POST
-        logger.info("📡 Enviando solicitud POST...")
-        response = requests.post(url, data=data, headers=headers, timeout=15)
-        
-        logger.info(f"📊 Código de respuesta: {response.status_code}")
-        
-        if response.status_code == 200:
-            # Parsear el HTML
-            soup = BeautifulSoup(response.text, 'html.parser')
-            texto = soup.get_text()
+    for url, tipo in urls:
+        try:
+            logger.info(f"📡 Intentando: {url}")
             
-            # Guardar HTML para depuración
-            try:
-                with open("sisben_resultado.html", "w", encoding="utf-8") as f:
-                    f.write(response.text)
-                logger.info("📁 HTML guardado para depuración")
-            except:
-                pass
-            
-            # Verificar si hay mensaje de error
-            if "no se encontraron resultados" in texto.lower():
-                logger.warning("❌ No se encontraron resultados")
-                return None
-            
-            # Verificar si hay datos
-            if "registro válido" in texto.lower() or "datos personales" in texto.lower():
-                return extraer_datos_html(texto, tipo_documento, numero_documento)
+            if tipo == "json":
+                payload = {"tipoDocumento": tipo_id, "numeroDocumento": numero_documento}
+                response = requests.post(url, json=payload, headers=headers, timeout=15)
             else:
-                # Buscar si hay algún dato visible
-                logger.warning("⚠️ No se encontraron datos personales en la respuesta")
-                logger.info(f"📄 Texto de la página (primeros 300 caracteres):\n{texto[:300]}")
-                return None
-        else:
-            logger.error(f"❌ Error HTTP: {response.status_code}")
-            return None
+                payload = {"tipoDocumento": tipo_id, "documento": numero_documento}
+                response = requests.post(url, data=payload, headers=headers, timeout=15)
             
+            if response.status_code == 200:
+                if tipo == "json":
+                    try:
+                        data = response.json()
+                        logger.info(f"✅ Datos JSON: {data}")
+                        if data and "error" not in str(data).lower():
+                            datos = extraer_datos_api(data, tipo_documento, numero_documento)
+                            if datos:
+                                return datos
+                    except:
+                        pass
+                
+                # Si no es JSON, parsear HTML
+                soup = BeautifulSoup(response.text, 'html.parser')
+                texto = soup.get_text()
+                if "registro válido" in texto.lower() or "datos personales" in texto.lower():
+                    return extraer_datos_html(texto, tipo_documento, numero_documento)
+                    
+        except Exception as e:
+            logger.warning(f"⚠️ Error en {url}: {e}")
+    
+    logger.error("❌ No se pudo obtener información")
+    return None
+
+def extraer_datos_api(data, tipo_documento, numero_documento):
+    """Extrae datos del JSON de la API"""
+    try:
+        if isinstance(data, list) and len(data) > 0:
+            data = data[0]
+        if "data" in data:
+            data = data["data"]
+        if "resultado" in data:
+            data = data["resultado"]
+        
+        datos = {
+            "nombres": data.get("nombres", data.get("Nombres", data.get("Nombre", "No disponible"))),
+            "apellidos": data.get("apellidos", data.get("Apellidos", data.get("Apellido", "No disponible"))),
+            "tipo_documento": tipo_documento,
+            "numero_documento": numero_documento,
+            "municipio": data.get("municipio", data.get("Municipio", "No disponible")),
+            "departamento": data.get("departamento", data.get("Departamento", "No disponible")),
+            "grupo": data.get("grupo", data.get("Grupo", "No disponible")),
+            "categoria": data.get("categoria", data.get("Categoria", "No disponible")),
+            "fecha_encuesta": data.get("fechaEncuesta", data.get("FechaEncuesta", "No disponible")),
+            "fecha_actualizacion": data.get("fechaActualizacion", data.get("FechaActualizacion", "No disponible")),
+            "nombre_administrador": data.get("nombreAdministrador", data.get("NombreAdministrador", "No disponible")),
+            "direccion_oficina": data.get("direccionOficina", data.get("DireccionOficina", "No disponible")),
+            "telefono_oficina": data.get("telefonoOficina", data.get("TelefonoOficina", "No disponible")),
+            "email_oficina": data.get("emailOficina", data.get("EmailOficina", "No disponible")),
+            "fecha_consulta": datetime.now().strftime("%d/%m/%Y %H:%M")
+        }
+        
+        if datos["nombres"] != "No disponible" or datos["apellidos"] != "No disponible":
+            return datos
+        return None
     except Exception as e:
-        logger.error(f"❌ Error en la consulta: {e}")
+        logger.error(f"Error parseando API: {e}")
         return None
 
 def extraer_datos_html(texto, tipo_documento, numero_documento):
-    """Extrae los datos del HTML usando expresiones regulares"""
+    """Extrae datos del HTML"""
     datos = {
         "nombres": "No disponible",
         "apellidos": "No disponible",
@@ -189,7 +208,6 @@ def extraer_datos_html(texto, tipo_documento, numero_documento):
         "fecha_consulta": datetime.now().strftime("%d/%m/%Y %H:%M")
     }
     
-    # Patrones de búsqueda
     patrones = {
         "nombres": r'Nombres?[:\s]+([A-ZÁÉÍÓÚÑ\s.]+)',
         "apellidos": r'Apellidos?[:\s]+([A-ZÁÉÍÓÚÑ\s.]+)',
@@ -207,7 +225,6 @@ def extraer_datos_html(texto, tipo_documento, numero_documento):
             datos[key] = match.group(1).strip()
             logger.info(f"✅ {key}: {datos[key]}")
     
-    # Información de la oficina
     match = re.search(r'Nombre administrador[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)', texto, re.IGNORECASE)
     if match:
         datos["nombre_administrador"] = match.group(1).strip()
@@ -224,12 +241,9 @@ def extraer_datos_html(texto, tipo_documento, numero_documento):
     if match:
         datos["email_oficina"] = match.group(1).strip()
     
-    # Verificar si se encontraron datos
-    if datos["nombres"] == "No disponible" and datos["apellidos"] == "No disponible":
-        logger.warning("❌ No se encontraron datos personales")
-        return None
-    
-    return datos
+    if datos["nombres"] != "No disponible" or datos["apellidos"] != "No disponible":
+        return datos
+    return None
 
 # ========== GENERAR PDF ==========
 def generar_pdf_sisben(datos, output_path):
@@ -237,7 +251,6 @@ def generar_pdf_sisben(datos, output_path):
     width, height = letter
     
     y = height - 40
-    
     c.setFont("Helvetica", 8)
     fecha_consulta = datos.get("fecha_consulta", datetime.now().strftime("%d/%m/%Y %H:%M"))
     c.drawRightString(width - 50, y, f"Fecha de consulta: {fecha_consulta}")
@@ -246,7 +259,6 @@ def generar_pdf_sisben(datos, output_path):
     c.drawString(50, y, "Ficha:")
     c.setFont("Helvetica", 8)
     c.drawString(100, y, "41132004748100000116")
-    
     y -= 30
     
     c.setFont("Helvetica-Bold", 12)
@@ -291,7 +303,7 @@ def generar_pdf_sisben(datos, output_path):
     c.setFillColor(colors.black)
     c.drawString(50, y, f"Encuesta vigente: {datos.get('fecha_encuesta', 'No disponible')}")
     y -= 15
-    c.drawString(50, y, f"Última actualización ciudadano: {datos.get('fecha_actualizacion', 'No disponible')}")
+    c.drawString(50, y, f"Última actualización: {datos.get('fecha_actualizacion', 'No disponible')}")
     y -= 30
     
     c.setFont("Helvetica-Bold", 12)
@@ -301,30 +313,29 @@ def generar_pdf_sisben(datos, output_path):
     
     c.setFont("Helvetica", 10)
     c.setFillColor(colors.black)
-    c.drawString(50, y, f"Nombre administrador: {datos.get('nombre_administrador', 'No disponible')}")
+    c.drawString(50, y, f"Nombre: {datos.get('nombre_administrador', 'No disponible')}")
     y -= 15
     c.drawString(50, y, f"Dirección: {datos.get('direccion_oficina', 'No disponible')}")
     y -= 15
     c.drawString(50, y, f"Teléfono: {datos.get('telefono_oficina', 'No disponible')}")
     y -= 15
-    c.drawString(50, y, f"Correo Electrónico: {datos.get('email_oficina', 'No disponible')}")
+    c.drawString(50, y, f"Email: {datos.get('email_oficina', 'No disponible')}")
     y -= 30
     
     c.setFont("Helvetica", 8)
     c.setFillColor(colors.gray)
-    c.drawString(50, 50, "*Si encuentra alguna inconsistencia o desea actualizar su información por favor acérquese a la oficina del Sisbén del municipio donde reside actualmente")
+    c.drawString(50, 50, "*Si encuentra alguna inconsistencia, acérquese a la oficina del Sisbén de su municipio")
     c.line(50, 70, width - 50, 70)
-    
     c.save()
-    logger.info(f"PDF de Sisbén generado: {output_path}")
+    logger.info(f"PDF generado: {output_path}")
 
-# ========== FUNCIONES DE PLANTILLAS ==========
+# ========== FUNCIÓN PARA GENERAR WORD ==========
 def generar_word(answers, folder="poder_vehiculo"):
     template_path = TEMPLATES_DIR / folder / "template.docx"
     if not template_path.exists():
         template_path = Path("template.docx")
         if not template_path.exists():
-            raise FileNotFoundError(f"Plantilla no encontrada en templates/{folder}/template.docx")
+            raise FileNotFoundError(f"Plantilla no encontrada")
     
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filename = f"Poder_{answers.get('placa', 'sin_placa')}_{now}.docx"
@@ -333,7 +344,6 @@ def generar_word(answers, folder="poder_vehiculo"):
     doc = DocxTemplate(str(template_path))
     doc.render(answers)
     doc.save(str(output_path))
-    
     logger.info(f"Documento generado: {output_filename}")
     return str(output_path), output_filename
 
@@ -379,7 +389,7 @@ def webhook():
             return "OK", 200
         
         if incoming_msg == "1":
-            enviar_whatsapp(sender_clean, "Perfecto! Necesito algunos datos para generar el documento.\n\nEscribe el DIA de la fecha (ej: 10):")
+            enviar_whatsapp(sender_clean, "Perfecto! Necesito algunos datos.\n\nEscribe el DIA de la fecha (ej: 10):")
             if sender_clean not in user_sessions:
                 user_sessions[sender_clean] = {"estado": "ASKING_DATA", "step": 0, "answers": {}}
             else:
@@ -388,13 +398,14 @@ def webhook():
             return "OK", 200
         
         if incoming_msg == "2":
-            enviar_whatsapp(sender_clean, "Escribe el TIPO de documento (ej: CC, CE, TI):\nOpciones: CC, CE, TI, DNI, Pasaporte, PEP, PPT")
+            enviar_whatsapp(sender_clean, "Escribe el TIPO de documento (CC, CE, TI, DNI, Pasaporte, PEP, PPT):")
             if sender_clean not in user_sessions:
                 user_sessions[sender_clean] = {"estado": "ASKING_SISBEN_TIPO", "step": 0, "answers": {}}
             else:
                 user_sessions[sender_clean]["estado"] = "ASKING_SISBEN_TIPO"
             return "OK", 200
         
+        # --- PREGUNTAS DEL DOCUMENTO (PODER) ---
         if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "ASKING_DATA":
             session = user_sessions[sender_clean]
             step = session["step"]
@@ -405,9 +416,9 @@ def webhook():
                 {"key": "mes", "question": "Escribe el MES en letras (ej: octubre):"},
                 {"key": "año", "question": "Escribe el ANIO (ej: 2024):"},
                 {"key": "entidad_destino", "question": "Escribe la ENTIDAD a la que va dirigido:"},
-                {"key": "nombre_vendedor", "question": "Escribe el NOMBRE COMPLETO del propietario actual:"},
+                {"key": "nombre_vendedor", "question": "Escribe el NOMBRE COMPLETO del propietario:"},
                 {"key": "cedula_vendedor", "question": "Escribe la CEDULA del propietario:"},
-                {"key": "ciudad_expedicion", "question": "Escribe la CIUDAD de expedicion de la cedula:"},
+                {"key": "ciudad_expedicion", "question": "Escribe la CIUDAD de expedicion:"},
                 {"key": "nombre_apoderado", "question": "Escribe el NOMBRE COMPLETO del apoderado:"},
                 {"key": "cedula_apoderado", "question": "Escribe la CEDULA del apoderado:"},
                 {"key": "placa", "question": "Escribe la PLACA del vehiculo:"}
@@ -441,6 +452,7 @@ def webhook():
                 enviar_whatsapp(sender_clean, summary)
                 return "OK", 200
         
+        # --- PREGUNTAS DE SISBÉN ---
         if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "ASKING_SISBEN_TIPO":
             session = user_sessions[sender_clean]
             session["answers"]["tipo_documento"] = incoming_msg
@@ -468,23 +480,24 @@ def webhook():
                     mensaje_duena = f"📄 Certificado de Sisbén generado\n\nSolicitado por: {sender_clean}\nTipo: {tipo_doc}\nNúmero: {num_doc}"
                     enviar_whatsapp(OWNER_WHATSAPP, mensaje_duena)
                     
-                    enviar_whatsapp(sender_clean, f"✅ Certificado de Sisbén generado correctamente y enviado a la encargada.\n\nDatos encontrados:\nNombres: {datos.get('nombres', 'N/A')}\nApellidos: {datos.get('apellidos', 'N/A')}\nGrupo: {datos.get('grupo', 'N/A')}")
+                    enviar_whatsapp(sender_clean, f"✅ Certificado generado correctamente.\n\nDatos encontrados:\nNombres: {datos.get('nombres', 'N/A')}\nApellidos: {datos.get('apellidos', 'N/A')}\nGrupo: {datos.get('grupo', 'N/A')}")
                 else:
-                    enviar_whatsapp(sender_clean, "❌ No se encontró información para esos datos. Verifica el tipo y número de documento.")
+                    enviar_whatsapp(sender_clean, "❌ No se encontró información para esos datos. Verifica tipo y número.")
             except Exception as e:
-                logger.error(f"Error al procesar Sisbén: {e}")
-                enviar_whatsapp(sender_clean, f"❌ Ocurrió un error al consultar el Sisbén. Intenta de nuevo.")
+                logger.error(f"Error: {e}")
+                enviar_whatsapp(sender_clean, "❌ Ocurrió un error al consultar el Sisbén. Intenta de nuevo.")
             
             user_sessions.pop(sender_clean, None)
             return "OK", 200
         
+        # --- CONFIRMACIÓN (PODER) ---
         if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "REVIEW_DATA":
             if incoming_msg.lower() in ["si", "sí", "yes"]:
                 try:
                     answers = user_sessions[sender_clean]["answers"]
                     output_path, output_filename = generar_word(answers)
                     
-                    enviar_whatsapp(sender_clean, "✅ Solicitud enviada correctamente!\n\nLa encargada de la Papeleria Lider revisara tu documento y te contactara en breve.\nGracias por usar nuestro servicio.")
+                    enviar_whatsapp(sender_clean, "✅ Solicitud enviada correctamente!\n\nLa encargada revisará tu documento y te contactará.")
                     
                     enviar_documento_ultramsg(OWNER_WHATSAPP, output_path, output_filename)
                     mensaje_duena = f"📄 Nuevo documento generado\n\nSolicitado por: {sender_clean}\nPlaca: {answers.get('placa', 'N/A')}\nPropietario: {answers.get('nombre_vendedor', 'N/A')}"
@@ -493,20 +506,20 @@ def webhook():
                     user_sessions.pop(sender_clean, None)
                     
                 except Exception as e:
-                    logger.error(f"Error al generar documento: {e}")
-                    enviar_whatsapp(sender_clean, f"❌ Error al generar el documento: {str(e)}")
+                    logger.error(f"Error: {e}")
+                    enviar_whatsapp(sender_clean, f"❌ Error: {str(e)}")
                     user_sessions.pop(sender_clean, None)
                 return "OK", 200
             
             elif incoming_msg.lower() in ["no", "cancelar"]:
-                enviar_whatsapp(sender_clean, "Operacion cancelada. Escribe 'hola' para comenzar de nuevo.")
+                enviar_whatsapp(sender_clean, "Operación cancelada. Escribe 'hola' para comenzar.")
                 user_sessions.pop(sender_clean, None)
                 return "OK", 200
             else:
-                enviar_whatsapp(sender_clean, "Responde SI para generar el documento o NO para cancelar.")
+                enviar_whatsapp(sender_clean, "Responde SI o NO.")
                 return "OK", 200
         
-        enviar_whatsapp(sender_clean, "No entendi tu mensaje. Escribe 'hola' para comenzar.")
+        enviar_whatsapp(sender_clean, "No entendí tu mensaje. Escribe 'hola' para comenzar.")
         return "OK", 200
     
     return "OK", 200

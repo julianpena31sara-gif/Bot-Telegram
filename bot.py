@@ -44,7 +44,6 @@ user_sessions = {}
 
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
-    """Envía un mensaje de texto usando Ultramsg"""
     url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/chat"
     payload = {"token": ULTRA_TOKEN, "to": numero, "body": mensaje}
     try:
@@ -59,7 +58,6 @@ def enviar_whatsapp(numero, mensaje):
         return None
 
 def enviar_documento_ultramsg(numero, archivo_path, nombre_archivo):
-    """Envía un documento usando la URL pública generada por Railway"""
     descarga_url = f"{BASE_URL}/descargar/{nombre_archivo}"
     url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/document"
     payload = {
@@ -67,7 +65,7 @@ def enviar_documento_ultramsg(numero, archivo_path, nombre_archivo):
         "to": numero,
         "filename": nombre_archivo,
         "document": descarga_url,
-        "caption": "📄 Documento generado automáticamente por Papeleria Lider"
+        "caption": "📄 Documento generado automaticamente por Papeleria Lider"
     }
     try:
         response = requests.post(url, json=payload, timeout=10)
@@ -93,7 +91,7 @@ def obtener_saludo():
 # ========== FUNCIONES DE SISBÉN ==========
 def mapear_tipo_documento(tipo_input):
     """
-    Convierte el tipo de documento ingresado por el cliente al valor esperado por el SELECT
+    Convierte el tipo de documento ingresado por el cliente al valor del SELECT
     """
     tipo_input = tipo_input.upper().strip()
     
@@ -106,36 +104,32 @@ def mapear_tipo_documento(tipo_input):
         "CEDULA DE CIUDADANIA": "Cédula de Ciudadanía",
         "CE": "Cédula de extranjería",
         "CEDULA DE EXTRANJERIA": "Cédula de extranjería",
-        "DNI": "DNI(Pais de origen)",
-        "DNI(PAIS DE ORIGEN)": "DNI(Pais de origen)",
+        "DNI": "DNI(País de origen)",
+        "DNI(PAIS DE ORIGEN)": "DNI(País de origen)",
         "PASAPORTE": "DNI(Pasaporte)",
         "DNI(PASAPORTE)": "DNI(Pasaporte)",
-        "SALVO CONDUCTO": "Salvo conducto para refugiado",
+        "SALVO CONDUCTO": "Salvoconducto para refugiado",
         "PEP": "Permiso Especial de Permanencia",
         "PERMISO ESPECIAL": "Permiso Especial de Permanencia",
         "PPT": "Permiso Por Protección Temporal",
         "PERMISO PROTECCION": "Permiso Por Protección Temporal"
     }
     
-    # Buscar coincidencia exacta o parcial
     for key, value in mapeo.items():
         if tipo_input == key or tipo_input in key or key in tipo_input:
             return value
     
-    # Si no se encuentra, devolver el texto original (por si acaso)
     return tipo_input
 
 def consultar_sisben_real(tipo_documento, numero_documento):
     """
-    Consulta la página del Sisbén usando Selenium con SELECT
+    Consulta la página del Sisbén usando Selenium con los IDs reales
     """
     logger.info(f"🔍 Iniciando consulta Sisbén para {tipo_documento}: {numero_documento}")
     
-    # Mapear el tipo de documento al valor del SELECT
     tipo_documento_mapeado = mapear_tipo_documento(tipo_documento)
     logger.info(f"📝 Tipo de documento mapeado: {tipo_documento} -> {tipo_documento_mapeado}")
     
-    # Configurar Chrome en modo headless
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
@@ -150,70 +144,57 @@ def consultar_sisben_real(tipo_documento, numero_documento):
         driver = webdriver.Chrome(service=service, options=chrome_options)
         driver.set_page_load_timeout(30)
         
-        # Ir a la página
         url = "https://www.sisben.gov.co/Paginas/consulta-tu-grupo.html"
         logger.info(f"📄 Cargando página: {url}")
         driver.get(url)
-        time.sleep(3)
+        time.sleep(5)
         
-        # --- BUSCAR EL SELECT DE TIPO DE DOCUMENTO ---
+        # ========== SELECCIONAR TIPO DE DOCUMENTO ==========
+        # ID REAL: TipoID
         tipo_select = None
-        
-        # Buscar por ID
         try:
-            tipo_select = driver.find_element(By.ID, "tipoDocumento")
-            logger.info("✅ SELECT 'tipoDocumento' encontrado por ID")
+            tipo_select = driver.find_element(By.ID, "TipoID")
+            logger.info("✅ SELECT encontrado por ID: TipoID")
         except:
-            pass
-        
-        # Buscar por NAME
-        if not tipo_select:
             try:
-                tipo_select = driver.find_element(By.NAME, "tipoDocumento")
-                logger.info("✅ SELECT 'tipoDocumento' encontrado por NAME")
+                tipo_select = driver.find_element(By.NAME, "TipoID")
+                logger.info("✅ SELECT encontrado por NAME: TipoID")
             except:
-                pass
-        
-        # Buscar por CSS (si es un select)
-        if not tipo_select:
-            try:
-                tipo_select = driver.find_element(By.CSS_SELECTOR, "select[name='tipoDocumento']")
-                logger.info("✅ SELECT 'tipoDocumento' encontrado por CSS")
-            except:
-                pass
-        
-        if not tipo_select:
-            # Listar todos los selects de la página
-            selects = driver.find_elements(By.TAG_NAME, "select")
-            logger.info(f"🔍 Se encontraron {len(selects)} SELECT en la página")
-            for i, sel in enumerate(selects):
-                try:
+                selects = driver.find_elements(By.TAG_NAME, "select")
+                for sel in selects:
                     sel_id = sel.get_attribute("id")
-                    sel_name = sel.get_attribute("name")
-                    logger.info(f"   SELECT {i+1}: ID={sel_id}, NAME={sel_name}")
-                except:
-                    pass
+                    if sel_id and "Tipo" in sel_id:
+                        tipo_select = sel
+                        logger.info(f"✅ SELECT encontrado por coincidencia: ID={sel_id}")
+                        break
+        
+        if not tipo_select:
             raise Exception("No se encontró el SELECT de tipo de documento")
         
-        # --- BUSCAR EL INPUT DE NÚMERO DE DOCUMENTO ---
+        # ========== BUSCAR INPUT DE NÚMERO DE DOCUMENTO ==========
+        # ID REAL: documento
         num_input = None
         try:
-            num_input = driver.find_element(By.ID, "numeroDocumento")
-            logger.info("✅ INPUT 'numeroDocumento' encontrado por ID")
+            num_input = driver.find_element(By.ID, "documento")
+            logger.info("✅ INPUT encontrado por ID: documento")
         except:
             try:
-                num_input = driver.find_element(By.NAME, "numeroDocumento")
-                logger.info("✅ INPUT 'numeroDocumento' encontrado por NAME")
+                num_input = driver.find_element(By.NAME, "documento")
+                logger.info("✅ INPUT encontrado por NAME: documento")
             except:
-                pass
+                inputs = driver.find_elements(By.TAG_NAME, "input")
+                for inp in inputs:
+                    inp_id = inp.get_attribute("id")
+                    if inp_id and "documento" in inp_id.lower():
+                        num_input = inp
+                        logger.info(f"✅ INPUT encontrado por coincidencia: ID={inp_id}")
+                        break
         
         if not num_input:
             raise Exception("No se encontró el INPUT de número de documento")
         
-        # --- SELECCIONAR EL TIPO DE DOCUMENTO ---
+        # ========== SELECCIONAR EL TIPO DE DOCUMENTO ==========
         select = Select(tipo_select)
-        
-        # Verificar si la opción existe
         opciones = [opt.text for opt in select.options]
         logger.info(f"📋 Opciones disponibles: {opciones}")
         
@@ -221,62 +202,47 @@ def consultar_sisben_real(tipo_documento, numero_documento):
             select.select_by_visible_text(tipo_documento_mapeado)
             logger.info(f"✅ Seleccionada opción: {tipo_documento_mapeado}")
         else:
-            # Buscar coincidencia parcial
             encontrado = False
             for opt in opciones:
                 if tipo_documento_mapeado.lower() in opt.lower() or opt.lower() in tipo_documento_mapeado.lower():
                     select.select_by_visible_text(opt)
-                    logger.info(f"✅ Seleccionada opción por coincidencia parcial: {opt}")
+                    logger.info(f"✅ Seleccionada opción por coincidencia: {opt}")
                     encontrado = True
                     break
             if not encontrado:
-                # Si no se encuentra, seleccionar "Cédula de Ciudadanía" por defecto
-                for opt in opciones:
-                    if "Cédula de Ciudadanía" in opt:
-                        select.select_by_visible_text(opt)
-                        logger.info(f"✅ Seleccionada opción por defecto: {opt}")
-                        encontrado = True
-                        break
-                if not encontrado:
-                    select.select_by_index(1)  # Seleccionar la primera opción no vacía
-                    logger.info("⚠️ Seleccionada primera opción disponible")
+                select.select_by_index(1)
+                logger.info("⚠️ Seleccionada primera opción disponible")
         
-        # --- INGRESAR EL NÚMERO DE DOCUMENTO ---
+        # ========== INGRESAR NÚMERO DE DOCUMENTO ==========
         num_input.clear()
         num_input.send_keys(numero_documento)
-        logger.info(f"📝 Número de documento ingresado: {numero_documento}")
+        logger.info(f"📝 Número ingresado: {numero_documento}")
         
-        # --- ENVIAR EL FORMULARIO ---
+        # ========== ENVIAR FORMULARIO ==========
+        # ID REAL: botonenvio
         try:
-            # Buscar botón por ID
-            boton = driver.find_element(By.ID, "btnConsultar")
+            boton = driver.find_element(By.ID, "botonenvio")
             boton.click()
-            logger.info("🖱️ Botón clickeado")
+            logger.info("🖱️ Botón clickeado por ID: botonenvio")
         except:
             try:
-                # Buscar botón por CSS
                 boton = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], input[type='submit']")
                 boton.click()
-                logger.info("🖱️ Botón clickeado (por CSS)")
+                logger.info("🖱️ Botón clickeado por CSS")
             except:
-                # Enviar con submit
-                try:
-                    num_input.submit()
-                    logger.info("⌨️ Formulario enviado con submit")
-                except:
-                    num_input.send_keys(Keys.RETURN)
-                    logger.info("⌨️ Enviado con ENTER")
+                num_input.send_keys(Keys.RETURN)
+                logger.info("⌨️ Formulario enviado con ENTER")
         
-        # --- ESPERAR RESULTADOS ---
+        # ========== ESPERAR RESULTADOS ==========
         logger.info("⏳ Esperando resultados...")
-        time.sleep(5)
+        time.sleep(8)
         
-        # --- EXTRAER DATOS ---
+        # ========== EXTRAER DATOS ==========
         page_source = driver.page_source
         soup = BeautifulSoup(page_source, 'html.parser')
         texto_pagina = soup.get_text()
         
-        # Guardar HTML para depuración (opcional)
+        # Guardar HTML para depuración
         try:
             with open("resultados_sisben.html", "w", encoding="utf-8") as f:
                 f.write(page_source)
@@ -284,7 +250,11 @@ def consultar_sisben_real(tipo_documento, numero_documento):
         except:
             pass
         
-        # --- EXTRAER DATOS CON EXPRESIONES REGULARES ---
+        if "no se encontraron resultados" in texto_pagina.lower() or "no se encontró" in texto_pagina.lower():
+            logger.warning("❌ La página indica que no se encontraron resultados")
+            return None
+        
+        # ========== EXTRAER DATOS CON EXPRESIONES REGULARES ==========
         datos = {
             "nombres": "No disponible",
             "apellidos": "No disponible",
@@ -303,14 +273,13 @@ def consultar_sisben_real(tipo_documento, numero_documento):
             "fecha_consulta": datetime.now().strftime("%d/%m/%Y %H:%M")
         }
         
-        # Buscar patrones
         patrones = {
-            "nombres": r'Nombres?[:\s]+([A-ZÁÉÍÓÚÑ\s]+)',
-            "apellidos": r'Apellidos?[:\s]+([A-ZÁÉÍÓÚÑ\s]+)',
-            "municipio": r'Municipio[:\s]+([A-Za-zÁÉÍÓÚÑ\s]+)',
-            "departamento": r'Departamento[:\s]+([A-Za-zÁÉÍÓÚÑ\s]+)',
+            "nombres": r'Nombres?[:\s]+([A-ZÁÉÍÓÚÑ\s.]+)',
+            "apellidos": r'Apellidos?[:\s]+([A-ZÁÉÍÓÚÑ\s.]+)',
+            "municipio": r'Municipio[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)',
+            "departamento": r'Departamento[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)',
             "grupo": r'[Gg]rupo[:\s]+([A-Z0-9]+)',
-            "categoria": r'[Cc]ategor[ií]a[:\s]+([A-Za-zÁÉÍÓÚÑ\s]+)',
+            "categoria": r'[Cc]ategor[ií]a[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)',
             "fecha_encuesta": r'Encuesta vigente[:\s]+([0-9/]+)',
             "fecha_actualizacion": r'[Úú]ltima actualizaci[óo]n[:\s]+([0-9/]+)',
         }
@@ -321,39 +290,26 @@ def consultar_sisben_real(tipo_documento, numero_documento):
                 datos[key] = match.group(1).strip()
                 logger.info(f"✅ {key}: {datos[key]}")
         
-        # Buscar información de la oficina
-        # Nombre administrador
-        match = re.search(r'Nombre administrador[:\s]+([A-Za-zÁÉÍÓÚÑ\s]+)', texto_pagina, re.IGNORECASE)
+        # Información de la oficina
+        match = re.search(r'Nombre administrador[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)', texto_pagina, re.IGNORECASE)
         if match:
             datos["nombre_administrador"] = match.group(1).strip()
-            logger.info(f"✅ nombre_administrador: {datos['nombre_administrador']}")
         
-        # Dirección
-        match = re.search(r'Direcci[oó]n[:\s]+([A-Za-zÁÉÍÓÚÑ\s0-9#-]+)', texto_pagina, re.IGNORECASE)
+        match = re.search(r'Direcci[oó]n[:\s]+([A-Za-zÁÉÍÓÚÑ\s0-9#-.]+)', texto_pagina, re.IGNORECASE)
         if match:
             datos["direccion_oficina"] = match.group(1).strip()
-            logger.info(f"✅ direccion_oficina: {datos['direccion_oficina']}")
         
-        # Teléfono
         match = re.search(r'Tel[eé]fono[:\s]+([0-9\s]+)', texto_pagina, re.IGNORECASE)
         if match:
             datos["telefono_oficina"] = match.group(1).strip()
-            logger.info(f"✅ telefono_oficina: {datos['telefono_oficina']}")
         
-        # Correo
         match = re.search(r'Correo Electr[oó]nico[:\s]+([A-Za-z0-9@._-]+)', texto_pagina, re.IGNORECASE)
         if match:
             datos["email_oficina"] = match.group(1).strip()
-            logger.info(f"✅ email_oficina: {datos['email_oficina']}")
         
-        # Verificar si se encontraron datos
         if datos["nombres"] == "No disponible" and datos["apellidos"] == "No disponible":
-            # Buscar mensaje de error
-            if "No se encontraron resultados" in texto_pagina or "no se encontró" in texto_pagina.lower():
-                logger.warning("❌ La página indica que no se encontraron resultados")
-            else:
-                logger.warning("❌ No se pudieron extraer los datos personales")
-                logger.info(f"📄 Texto de la página (primeros 500 caracteres):\n{texto_pagina[:500]}")
+            logger.warning("❌ No se pudieron extraer los datos")
+            logger.info(f"📄 Texto de la página (primeros 500 caracteres):\n{texto_pagina[:500]}")
             return None
         
         logger.info(f"✅ Datos extraídos correctamente")
@@ -369,19 +325,15 @@ def consultar_sisben_real(tipo_documento, numero_documento):
 
 # ========== FUNCIÓN PARA GENERAR PDF DE SISBÉN ==========
 def generar_pdf_sisben(datos, output_path):
-    """Genera un PDF con el formato del Sisbén"""
     c = canvas.Canvas(output_path, pagesize=letter)
     width, height = letter
     
-    # --- ENCABEZADO ---
     y = height - 40
     
-    # Fecha de consulta
     c.setFont("Helvetica", 8)
     fecha_consulta = datos.get("fecha_consulta", datetime.now().strftime("%d/%m/%Y %H:%M"))
     c.drawRightString(width - 50, y, f"Fecha de consulta: {fecha_consulta}")
     
-    # Ficha (fija para el ejemplo)
     c.setFont("Helvetica-Bold", 8)
     c.drawString(50, y, "Ficha:")
     c.setFont("Helvetica", 8)
@@ -389,13 +341,11 @@ def generar_pdf_sisben(datos, output_path):
     
     y -= 30
     
-    # --- LÍNEA DE ESTADO ---
     c.setFont("Helvetica-Bold", 12)
-    c.setFillColor(colors.Color(0.0, 0.5, 0.0))  # Verde
+    c.setFillColor(colors.Color(0.0, 0.5, 0.0))
     c.drawString(50, y, "Registro válido")
     y -= 20
     
-    # --- GRUPO Y CATEGORÍA ---
     c.setFont("Helvetica-Bold", 24)
     c.setFillColor(colors.Color(0.2, 0.4, 0.6))
     c.drawString(50, y, datos.get("grupo", "N/A"))
@@ -404,7 +354,6 @@ def generar_pdf_sisben(datos, output_path):
     c.drawString(150, y + 10, datos.get("categoria", "N/A"))
     y -= 40
     
-    # --- DATOS PERSONALES ---
     c.setFont("Helvetica-Bold", 12)
     c.setFillColor(colors.Color(0.1, 0.3, 0.5))
     c.drawString(50, y, "DATOS PERSONALES")
@@ -425,7 +374,6 @@ def generar_pdf_sisben(datos, output_path):
     c.drawString(50, y, f"Departamento: {datos.get('departamento', 'No disponible')}")
     y -= 25
     
-    # --- INFORMACIÓN ADMINISTRATIVA ---
     c.setFont("Helvetica-Bold", 12)
     c.setFillColor(colors.Color(0.1, 0.3, 0.5))
     c.drawString(50, y, "INFORMACIÓN ADMINISTRATIVA")
@@ -438,7 +386,6 @@ def generar_pdf_sisben(datos, output_path):
     c.drawString(50, y, f"Última actualización ciudadano: {datos.get('fecha_actualizacion', 'No disponible')}")
     y -= 30
     
-    # --- CONTACTO OFICINA ---
     c.setFont("Helvetica-Bold", 12)
     c.setFillColor(colors.Color(0.1, 0.3, 0.5))
     c.drawString(50, y, "Contacto Oficina SISBEN")
@@ -455,12 +402,9 @@ def generar_pdf_sisben(datos, output_path):
     c.drawString(50, y, f"Correo Electrónico: {datos.get('email_oficina', 'No disponible')}")
     y -= 30
     
-    # --- PIE DE PÁGINA ---
     c.setFont("Helvetica", 8)
     c.setFillColor(colors.gray)
     c.drawString(50, 50, "*Si encuentra alguna inconsistencia o desea actualizar su información por favor acérquese a la oficina del Sisbén del municipio donde reside actualmente")
-    
-    # Línea de separación
     c.line(50, 70, width - 50, 70)
     
     c.save()
@@ -468,10 +412,8 @@ def generar_pdf_sisben(datos, output_path):
 
 # ========== FUNCIONES DE PLANTILLAS ==========
 def generar_word(answers, folder="poder_vehiculo"):
-    """Genera el Word con los datos y devuelve la ruta y nombre del archivo"""
     template_path = TEMPLATES_DIR / folder / "template.docx"
     if not template_path.exists():
-        # Buscar en la raíz
         template_path = Path("template.docx")
         if not template_path.exists():
             raise FileNotFoundError(f"Plantilla no encontrada en templates/{folder}/template.docx")
@@ -498,7 +440,6 @@ def descargar_archivo(filename):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    """Recibe mensajes de Ultramsg y responde rápidamente"""
     data = request.get_json()
     logger.info(f"Mensaje recibido: {data}")
     
@@ -508,7 +449,6 @@ def webhook():
         sender = message_data.get("from", "").replace("@c.us", "").replace("+", "")
         sender_name = message_data.get("pushname", sender)
         
-        # --- FILTRO: Ignorar mensajes del número conectado y de la dueña ---
         connected_clean = CONNECTED_NUMBER.replace("+", "").replace(" ", "")
         sender_clean = sender.replace("+", "").replace(" ", "")
         
@@ -522,7 +462,6 @@ def webhook():
         
         logger.info(f"Mensaje de {sender_name} ({sender_clean}): {incoming_msg}")
         
-        # --- MENÚ PRINCIPAL ---
         if incoming_msg.lower() == "hola":
             saludo = obtener_saludo()
             menu = f"Hola, {saludo}. Soy el asistente de la Papeleria Lider.\n\nQue tipo de documento necesitas?\n1. Poder para Tramite de Vehiculo\n2. Certificado de Sisbén\n3. Certificado de ADRES\n\nResponde con el numero de la opcion."
@@ -531,8 +470,7 @@ def webhook():
                 user_sessions[sender_clean] = {"estado": "SELECT_TEMPLATE", "step": 0, "answers": {}}
             return "OK", 200
         
-        # --- SELECCIONAR PLANTILLA ---
-        if incoming_msg == "1":  # Poder para Trámite de Vehículo
+        if incoming_msg == "1":
             enviar_whatsapp(sender_clean, "Perfecto! Necesito algunos datos para generar el documento.\n\nEscribe el DIA de la fecha (ej: 10):")
             if sender_clean not in user_sessions:
                 user_sessions[sender_clean] = {"estado": "ASKING_DATA", "step": 0, "answers": {}}
@@ -541,8 +479,7 @@ def webhook():
                 user_sessions[sender_clean]["step"] = 0
             return "OK", 200
         
-        # --- SISBÉN ---
-        if incoming_msg == "2":  # Certificado de Sisbén
+        if incoming_msg == "2":
             enviar_whatsapp(sender_clean, "Escribe el TIPO de documento (ej: CC, CE, TI):\nOpciones: CC, CE, TI, DNI, Pasaporte, PEP, PPT")
             if sender_clean not in user_sessions:
                 user_sessions[sender_clean] = {"estado": "ASKING_SISBEN_TIPO", "step": 0, "answers": {}}
@@ -613,7 +550,6 @@ def webhook():
             enviar_whatsapp(sender_clean, "⏳ Consultando información en el Sisbén...")
             
             try:
-                # Consulta real con Selenium
                 datos = consultar_sisben_real(tipo_doc, num_doc)
                 
                 if datos:
@@ -621,7 +557,6 @@ def webhook():
                     output_path = Path(OUTPUT_DIR) / output_filename
                     generar_pdf_sisben(datos, str(output_path))
                     
-                    # Enviar a la dueña
                     enviar_documento_ultramsg(OWNER_WHATSAPP, str(output_path), output_filename)
                     
                     mensaje_duena = f"📄 Certificado de Sisbén generado\n\nSolicitado por: {sender_clean}\nTipo: {tipo_doc}\nNúmero: {num_doc}"
@@ -666,13 +601,11 @@ def webhook():
                 enviar_whatsapp(sender_clean, "Responde SI para generar el documento o NO para cancelar.")
                 return "OK", 200
         
-        # --- FALLBACK ---
         enviar_whatsapp(sender_clean, "No entendi tu mensaje. Escribe 'hola' para comenzar.")
         return "OK", 200
     
     return "OK", 200
 
-# --- INICIO ---
 @app.route("/", methods=["GET"])
 def home():
     return "Bot de WhatsApp funcionando con Ultramsg"

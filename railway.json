@@ -1,5 +1,9 @@
 {
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "NIXPACKS",
+    "buildpacks": [
+      "https://github.com/railwayapp/nixpacks",
+      "https://github.com/railwayapp/chrome-headless"
+    ]
   }
 }

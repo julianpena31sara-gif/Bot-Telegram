@@ -11,6 +11,15 @@ from bs4 import BeautifulSoup
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait, Select
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.keys import Keys
+from webdriver_manager.chrome import ChromeDriverManager
+import time
 import re
 
 # --- CONFIGURACIÓN ---
@@ -79,171 +88,179 @@ def obtener_saludo():
     else:
         return "Buenas noches"
 
-# ========== FUNCIONES DE SISBÉN (CON reportes.sisben.gov.co) ==========
-def mapear_tipo_documento(tipo_input):
-    tipo_input = tipo_input.upper().strip()
-    mapeo = {
-        "RC": "1", "REGISTRO CIVIL": "1",
-        "TI": "2", "TARJETA DE IDENTIDAD": "2",
-        "CC": "3", "CEDULA DE CIUDADANIA": "3",
-        "CE": "4", "CEDULA DE EXTRANJERIA": "4",
-        "DNI": "5", "PASAPORTE": "6",
-        "PEP": "8", "PPT": "9"
-    }
-    for key, value in mapeo.items():
-        if tipo_input == key or tipo_input in key or key in tipo_input:
-            return value
-    return "3"
-
-def consultar_sisben_post(tipo_documento, numero_documento):
-    """Consulta el Sisbén usando reportes.sisben.gov.co"""
-    logger.info(f"🔍 Consultando Sisbén para {tipo_documento}: {numero_documento}")
+# ========== FUNCIÓN DE CONSULTA SISBÉN CON SELENIUM ==========
+def consultar_sisben_selenium(tipo_documento, numero_documento):
+    """
+    Consulta la página del Sisbén usando Selenium con un navegador real
+    """
+    logger.info(f"🔍 Iniciando consulta Sisbén para {tipo_documento}: {numero_documento}")
     
-    tipo_id = mapear_tipo_documento(tipo_documento)
+    # Mapear tipo de documento
+    tipo_map = {
+        "CC": "3",
+        "CEDULA DE CIUDADANIA": "3",
+        "CE": "4",
+        "CEDULA DE EXTRANJERIA": "4",
+        "TI": "2",
+        "TARJETA DE IDENTIDAD": "2",
+        "RC": "1",
+        "REGISTRO CIVIL": "1",
+        "DNI": "5",
+        "PASAPORTE": "6",
+        "PEP": "8",
+        "PPT": "9"
+    }
+    
+    tipo_id = tipo_map.get(tipo_documento.upper().strip(), "3")
     logger.info(f"📝 Tipo ID: {tipo_id}")
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "es-ES,es;q=0.9",
-        "Content-Type": "application/json",
-        "Origin": "https://www.sisben.gov.co",
-        "Referer": "https://www.sisben.gov.co/Paginas/consulta-tu-grupo.html"
-    }
+    # Configurar Chrome
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
-    # Intentar diferentes URLs
-    urls = [
-        ("https://reportes.sisben.gov.co/api/consulta", "json"),
-        ("https://reportes.sisben.gov.co/consulta/ciudadano", "form"),
-        ("https://reportes.sisben.gov.co/api/ciudadano", "json")
-    ]
-    
-    for url, tipo in urls:
-        try:
-            logger.info(f"📡 Intentando: {url}")
-            
-            if tipo == "json":
-                payload = {"tipoDocumento": tipo_id, "numeroDocumento": numero_documento}
-                response = requests.post(url, json=payload, headers=headers, timeout=15)
-            else:
-                payload = {"tipoDocumento": tipo_id, "documento": numero_documento}
-                response = requests.post(url, data=payload, headers=headers, timeout=15)
-            
-            if response.status_code == 200:
-                if tipo == "json":
-                    try:
-                        data = response.json()
-                        logger.info(f"✅ Datos JSON: {data}")
-                        if data and "error" not in str(data).lower():
-                            datos = extraer_datos_api(data, tipo_documento, numero_documento)
-                            if datos:
-                                return datos
-                    except:
-                        pass
-                
-                # Si no es JSON, parsear HTML
-                soup = BeautifulSoup(response.text, 'html.parser')
-                texto = soup.get_text()
-                if "registro válido" in texto.lower() or "datos personales" in texto.lower():
-                    return extraer_datos_html(texto, tipo_documento, numero_documento)
-                    
-        except Exception as e:
-            logger.warning(f"⚠️ Error en {url}: {e}")
-    
-    logger.error("❌ No se pudo obtener información")
-    return None
-
-def extraer_datos_api(data, tipo_documento, numero_documento):
-    """Extrae datos del JSON de la API"""
+    driver = None
     try:
-        if isinstance(data, list) and len(data) > 0:
-            data = data[0]
-        if "data" in data:
-            data = data["data"]
-        if "resultado" in data:
-            data = data["resultado"]
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        driver.set_page_load_timeout(30)
         
+        # 1. Ir a la página de consulta
+        url = "https://www.sisben.gov.co/Paginas/consulta-tu-grupo.html"
+        logger.info(f"📄 Cargando página: {url}")
+        driver.get(url)
+        time.sleep(5)
+        
+        # 2. Seleccionar el tipo de documento
+        try:
+            select_element = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.ID, "TipoID"))
+            )
+            select = Select(select_element)
+            
+            # Seleccionar por el ID numérico
+            select.select_by_value(tipo_id)
+            logger.info(f"✅ Seleccionado tipo: {tipo_id}")
+        except Exception as e:
+            logger.error(f"❌ Error al seleccionar tipo: {e}")
+            return None
+        
+        # 3. Ingresar el número de documento
+        try:
+            num_input = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.ID, "documento"))
+            )
+            num_input.clear()
+            num_input.send_keys(numero_documento)
+            logger.info(f"📝 Número ingresado: {numero_documento}")
+        except Exception as e:
+            logger.error(f"❌ Error al ingresar número: {e}")
+            return None
+        
+        # 4. Hacer clic en el botón "Consultar"
+        try:
+            boton = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.ID, "botonenvio"))
+            )
+            boton.click()
+            logger.info("🖱️ Botón clickeado")
+        except Exception as e:
+            logger.error(f"❌ Error al hacer clic: {e}")
+            return None
+        
+        # 5. Esperar resultados
+        logger.info("⏳ Esperando resultados...")
+        time.sleep(8)
+        
+        # 6. Extraer el HTML de la página de resultados
+        page_source = driver.page_source
+        soup = BeautifulSoup(page_source, 'html.parser')
+        texto = soup.get_text()
+        
+        # Guardar HTML para depuración
+        try:
+            with open("resultado_sisben.html", "w", encoding="utf-8") as f:
+                f.write(page_source)
+            logger.info("📁 HTML guardado")
+        except:
+            pass
+        
+        # 7. Verificar si hay mensaje de error
+        if "no se encontraron resultados" in texto.lower():
+            logger.warning("❌ No se encontraron resultados")
+            return None
+        
+        # 8. Extraer datos
         datos = {
-            "nombres": data.get("nombres", data.get("Nombres", data.get("Nombre", "No disponible"))),
-            "apellidos": data.get("apellidos", data.get("Apellidos", data.get("Apellido", "No disponible"))),
+            "nombres": "No disponible",
+            "apellidos": "No disponible",
             "tipo_documento": tipo_documento,
             "numero_documento": numero_documento,
-            "municipio": data.get("municipio", data.get("Municipio", "No disponible")),
-            "departamento": data.get("departamento", data.get("Departamento", "No disponible")),
-            "grupo": data.get("grupo", data.get("Grupo", "No disponible")),
-            "categoria": data.get("categoria", data.get("Categoria", "No disponible")),
-            "fecha_encuesta": data.get("fechaEncuesta", data.get("FechaEncuesta", "No disponible")),
-            "fecha_actualizacion": data.get("fechaActualizacion", data.get("FechaActualizacion", "No disponible")),
-            "nombre_administrador": data.get("nombreAdministrador", data.get("NombreAdministrador", "No disponible")),
-            "direccion_oficina": data.get("direccionOficina", data.get("DireccionOficina", "No disponible")),
-            "telefono_oficina": data.get("telefonoOficina", data.get("TelefonoOficina", "No disponible")),
-            "email_oficina": data.get("emailOficina", data.get("EmailOficina", "No disponible")),
+            "municipio": "No disponible",
+            "departamento": "No disponible",
+            "grupo": "No disponible",
+            "categoria": "No disponible",
+            "fecha_encuesta": "No disponible",
+            "fecha_actualizacion": "No disponible",
+            "nombre_administrador": "No disponible",
+            "direccion_oficina": "No disponible",
+            "telefono_oficina": "No disponible",
+            "email_oficina": "No disponible",
             "fecha_consulta": datetime.now().strftime("%d/%m/%Y %H:%M")
         }
         
-        if datos["nombres"] != "No disponible" or datos["apellidos"] != "No disponible":
-            return datos
-        return None
-    except Exception as e:
-        logger.error(f"Error parseando API: {e}")
-        return None
-
-def extraer_datos_html(texto, tipo_documento, numero_documento):
-    """Extrae datos del HTML"""
-    datos = {
-        "nombres": "No disponible",
-        "apellidos": "No disponible",
-        "tipo_documento": tipo_documento,
-        "numero_documento": numero_documento,
-        "municipio": "No disponible",
-        "departamento": "No disponible",
-        "grupo": "No disponible",
-        "categoria": "No disponible",
-        "fecha_encuesta": "No disponible",
-        "fecha_actualizacion": "No disponible",
-        "nombre_administrador": "No disponible",
-        "direccion_oficina": "No disponible",
-        "telefono_oficina": "No disponible",
-        "email_oficina": "No disponible",
-        "fecha_consulta": datetime.now().strftime("%d/%m/%Y %H:%M")
-    }
-    
-    patrones = {
-        "nombres": r'Nombres?[:\s]+([A-ZÁÉÍÓÚÑ\s.]+)',
-        "apellidos": r'Apellidos?[:\s]+([A-ZÁÉÍÓÚÑ\s.]+)',
-        "municipio": r'Municipio[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)',
-        "departamento": r'Departamento[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)',
-        "grupo": r'[Gg]rupo[:\s]+([A-Z0-9]+)',
-        "categoria": r'[Cc]ategor[ií]a[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)',
-        "fecha_encuesta": r'Encuesta vigente[:\s]+([0-9/]+)',
-        "fecha_actualizacion": r'[Úú]ltima actualizaci[óo]n[:\s]+([0-9/]+)',
-    }
-    
-    for key, pattern in patrones.items():
-        match = re.search(pattern, texto, re.IGNORECASE)
+        patrones = {
+            "nombres": r'Nombres?[:\s]+([A-ZÁÉÍÓÚÑ\s.]+)',
+            "apellidos": r'Apellidos?[:\s]+([A-ZÁÉÍÓÚÑ\s.]+)',
+            "municipio": r'Municipio[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)',
+            "departamento": r'Departamento[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)',
+            "grupo": r'[Gg]rupo[:\s]+([A-Z0-9]+)',
+            "categoria": r'[Cc]ategor[ií]a[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)',
+            "fecha_encuesta": r'Encuesta vigente[:\s]+([0-9/]+)',
+            "fecha_actualizacion": r'[Úú]ltima actualizaci[óo]n[:\s]+([0-9/]+)',
+        }
+        
+        for key, pattern in patrones.items():
+            match = re.search(pattern, texto, re.IGNORECASE)
+            if match:
+                datos[key] = match.group(1).strip()
+                logger.info(f"✅ {key}: {datos[key]}")
+        
+        # Información de la oficina
+        match = re.search(r'Nombre administrador[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)', texto, re.IGNORECASE)
         if match:
-            datos[key] = match.group(1).strip()
-            logger.info(f"✅ {key}: {datos[key]}")
-    
-    match = re.search(r'Nombre administrador[:\s]+([A-Za-zÁÉÍÓÚÑ\s.]+)', texto, re.IGNORECASE)
-    if match:
-        datos["nombre_administrador"] = match.group(1).strip()
-    
-    match = re.search(r'Direcci[oó]n[:\s]+([A-Za-zÁÉÍÓÚÑ\s0-9#-.]+)', texto, re.IGNORECASE)
-    if match:
-        datos["direccion_oficina"] = match.group(1).strip()
-    
-    match = re.search(r'Tel[eé]fono[:\s]+([0-9\s]+)', texto, re.IGNORECASE)
-    if match:
-        datos["telefono_oficina"] = match.group(1).strip()
-    
-    match = re.search(r'Correo Electr[oó]nico[:\s]+([A-Za-z0-9@._-]+)', texto, re.IGNORECASE)
-    if match:
-        datos["email_oficina"] = match.group(1).strip()
-    
-    if datos["nombres"] != "No disponible" or datos["apellidos"] != "No disponible":
+            datos["nombre_administrador"] = match.group(1).strip()
+        
+        match = re.search(r'Direcci[oó]n[:\s]+([A-Za-zÁÉÍÓÚÑ\s0-9#-.]+)', texto, re.IGNORECASE)
+        if match:
+            datos["direccion_oficina"] = match.group(1).strip()
+        
+        match = re.search(r'Tel[eé]fono[:\s]+([0-9\s]+)', texto, re.IGNORECASE)
+        if match:
+            datos["telefono_oficina"] = match.group(1).strip()
+        
+        match = re.search(r'Correo Electr[oó]nico[:\s]+([A-Za-z0-9@._-]+)', texto, re.IGNORECASE)
+        if match:
+            datos["email_oficina"] = match.group(1).strip()
+        
+        if datos["nombres"] == "No disponible" and datos["apellidos"] == "No disponible":
+            logger.warning("❌ No se encontraron datos personales")
+            return None
+        
+        logger.info("✅ Datos extraídos correctamente")
         return datos
-    return None
+        
+    except Exception as e:
+        logger.error(f"❌ Error en consulta Sisbén: {e}")
+        return None
+    finally:
+        if driver:
+            driver.quit()
+            logger.info("🔚 Driver cerrado")
 
 # ========== GENERAR PDF ==========
 def generar_pdf_sisben(datos, output_path):
@@ -468,7 +485,7 @@ def webhook():
             enviar_whatsapp(sender_clean, "⏳ Consultando información en el Sisbén...")
             
             try:
-                datos = consultar_sisben_post(tipo_doc, num_doc)
+                datos = consultar_sisben_selenium(tipo_doc, num_doc)
                 
                 if datos:
                     output_filename = f"Sisben_{num_doc}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"

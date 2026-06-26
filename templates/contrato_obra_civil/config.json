@@ -1,0 +1,17 @@
+{
+  "name": "Contrato de Obra Civil",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_contratante", "question": "📝 Escribe el NOMBRE COMPLETO del CONTRATANTE:"},
+    {"key": "cedula_contratante", "question": "🪪 Escribe la CÉDULA del CONTRATANTE:"},
+    {"key": "nombre_contratista", "question": "📝 Escribe el NOMBRE COMPLETO del CONTRATISTA:"},
+    {"key": "cedula_contratista", "question": "🪪 Escribe la CÉDULA del CONTRATISTA:"},
+    {"key": "descripcion_obra", "question": "🏗️ Escribe la DESCRIPCIÓN de la obra:"},
+    {"key": "valor_obra", "question": "💰 Escribe el VALOR de la obra:"},
+    {"key": "plazo_entrega", "question": "📅 Escribe el PLAZO DE ENTREGA (días):"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

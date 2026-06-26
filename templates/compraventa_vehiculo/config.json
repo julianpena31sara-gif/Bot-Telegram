@@ -1,0 +1,21 @@
+{
+  "name": "Compraventa de Vehículo",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_vendedor", "question": "📝 Escribe el NOMBRE COMPLETO del VENDEDOR:"},
+    {"key": "cedula_vendedor", "question": "🪪 Escribe la CÉDULA del VENDEDOR:"},
+    {"key": "nombre_comprador", "question": "📝 Escribe el NOMBRE COMPLETO del COMPRADOR:"},
+    {"key": "cedula_comprador", "question": "🪪 Escribe la CÉDULA del COMPRADOR:"},
+    {"key": "placa", "question": "🚗 Escribe la PLACA del vehículo:"},
+    {"key": "marca", "question": "🏷️ Escribe la MARCA del vehículo:"},
+    {"key": "modelo", "question": "📅 Escribe el MODELO del vehículo:"},
+    {"key": "color", "question": "🎨 Escribe el COLOR del vehículo:"},
+    {"key": "motor", "question": "🔢 Escribe el NÚMERO DE MOTOR:"},
+    {"key": "chasis", "question": "🔢 Escribe el NÚMERO DE CHASIS:"},
+    {"key": "valor", "question": "💰 Escribe el VALOR DE COMPRAVENTA:"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

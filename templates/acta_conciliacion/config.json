@@ -1,0 +1,15 @@
+{
+  "name": "Acta de Conciliación",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_conciliante", "question": "📝 Escribe el NOMBRE COMPLETO del CONCILIANTE 1:"},
+    {"key": "cedula_conciliante", "question": "🪪 Escribe la CÉDULA del CONCILIANTE 1:"},
+    {"key": "nombre_conciliado", "question": "📝 Escribe el NOMBRE COMPLETO del CONCILIANTE 2:"},
+    {"key": "cedula_conciliado", "question": "🪪 Escribe la CÉDULA del CONCILIANTE 2:"},
+    {"key": "acuerdo", "question": "📋 Escribe el ACUERDO ALCANZADO:"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Referencia Personal - Familiar",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_consultante", "question": "📝 Escribe el NOMBRE COMPLETO de la persona que solicita la referencia:"},
+    {"key": "cedula_consultante", "question": "🪪 Escribe la CÉDULA de la persona:"},
+    {"key": "nombre_referencia", "question": "📝 Escribe el NOMBRE COMPLETO de la REFERENCIA:"},
+    {"key": "cedula_referencia", "question": "🪪 Escribe la CÉDULA de la REFERENCIA:"},
+    {"key": "parentesco", "question": "👨‍👩‍👧‍👦 Escribe el PARENTESCO:"},
+    {"key": "telefono_referencia", "question": "📞 Escribe el TELÉFONO de la referencia:"},
+    {"key": "direccion_referencia", "question": "🏠 Escribe la DIRECCIÓN de la referencia:"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

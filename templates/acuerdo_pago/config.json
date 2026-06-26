@@ -1,0 +1,18 @@
+{
+  "name": "Acuerdo de Pago",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_deudor", "question": "📝 Escribe el NOMBRE COMPLETO del DEUDOR:"},
+    {"key": "cedula_deudor", "question": "🪪 Escribe la CÉDULA del DEUDOR:"},
+    {"key": "nombre_beneficiario", "question": "📝 Escribe el NOMBRE COMPLETO del BENEFICIARIO:"},
+    {"key": "cedula_beneficiario", "question": "🪪 Escribe la CÉDULA del BENEFICIARIO:"},
+    {"key": "valor_total", "question": "💰 Escribe el VALOR TOTAL de la deuda:"},
+    {"key": "numero_cuotas", "question": "🔢 Escribe el NÚMERO DE CUOTAS:"},
+    {"key": "valor_cuota", "question": "💰 Escribe el VALOR DE CADA CUOTA:"},
+    {"key": "fecha_primer_pago", "question": "📅 Escribe la FECHA DEL PRIMER PAGO (ej: 01/06/2026):"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Paz y Salvo de Impuesto Predial",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_propietario", "question": "📝 Escribe el NOMBRE COMPLETO del PROPIETARIO:"},
+    {"key": "cedula_propietario", "question": "🪪 Escribe la CÉDULA del PROPIETARIO:"},
+    {"key": "direccion_inmueble", "question": "🏠 Escribe la DIRECCIÓN del inmueble:"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

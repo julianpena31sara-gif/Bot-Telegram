@@ -1,0 +1,14 @@
+{
+  "name": "Cuenta de Cobro",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_cliente", "question": "📝 Escribe el NOMBRE COMPLETO del CLIENTE:"},
+    {"key": "cedula_cliente", "question": "🪪 Escribe la CÉDULA del CLIENTE:"},
+    {"key": "concepto", "question": "📋 Escribe el CONCEPTO del cobro:"},
+    {"key": "valor", "question": "💰 Escribe el VALOR a cobrar:"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

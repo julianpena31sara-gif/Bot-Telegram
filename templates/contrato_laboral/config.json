@@ -1,0 +1,18 @@
+{
+  "name": "Contrato Laboral",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_empleador", "question": "📝 Escribe el NOMBRE COMPLETO del EMPLEADOR:"},
+    {"key": "cedula_empleador", "question": "🪪 Escribe la CÉDULA del EMPLEADOR:"},
+    {"key": "nombre_empleado", "question": "📝 Escribe el NOMBRE COMPLETO del EMPLEADO:"},
+    {"key": "cedula_empleado", "question": "🪪 Escribe la CÉDULA del EMPLEADO:"},
+    {"key": "cargo", "question": "💼 Escribe el CARGO:"},
+    {"key": "salario", "question": "💰 Escribe el SALARIO:"},
+    {"key": "fecha_inicio", "question": "📅 Escribe la FECHA DE INICIO (ej: 01/06/2026):"},
+    {"key": "jornada", "question": "🕐 Escribe la JORNADA LABORAL (ej: 8 horas diarias):"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

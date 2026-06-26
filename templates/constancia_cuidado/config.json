@@ -1,0 +1,15 @@
+{
+  "name": "Constancia de Cuidado de Menores",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_cuidador", "question": "📝 Escribe el NOMBRE COMPLETO del CUIDADOR:"},
+    {"key": "cedula_cuidador", "question": "🪪 Escribe la CÉDULA del CUIDADOR:"},
+    {"key": "nombre_menor", "question": "👶 Escribe el NOMBRE COMPLETO del MENOR:"},
+    {"key": "cedula_menor", "question": "🪪 Escribe la CÉDULA del MENOR:"},
+    {"key": "tiempo_cuidado", "question": "⏰ Escribe el TIEMPO DE CUIDADO (ej: 3 meses):"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

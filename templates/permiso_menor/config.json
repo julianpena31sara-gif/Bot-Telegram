@@ -1,0 +1,18 @@
+{
+  "name": "Permiso de Salida para Menor de Edad",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_menor", "question": "👶 Escribe el NOMBRE COMPLETO del MENOR:"},
+    {"key": "cedula_menor", "question": "🪪 Escribe la CÉDULA del MENOR:"},
+    {"key": "nombre_autorizante", "question": "📝 Escribe el NOMBRE COMPLETO del AUTORIZANTE (padre/madre):"},
+    {"key": "cedula_autorizante", "question": "🪪 Escribe la CÉDULA del AUTORIZANTE:"},
+    {"key": "motivo_salida", "question": "📋 Escribe el MOTIVO de la salida:"},
+    {"key": "destino", "question": "📍 Escribe el DESTINO:"},
+    {"key": "fecha_salida", "question": "📅 Escribe la FECHA DE SALIDA (ej: 01/06/2026):"},
+    {"key": "fecha_regreso", "question": "📅 Escribe la FECHA DE REGRESO (ej: 05/06/2026):"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

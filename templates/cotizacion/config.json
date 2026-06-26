@@ -1,0 +1,22 @@
+{
+  "name": "Cotización",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_cliente", "question": "📝 Escribe el NOMBRE COMPLETO del CLIENTE:"},
+    {"key": "cedula_cliente", "question": "🪪 Escribe la CÉDULA del CLIENTE:"},
+    {"key": "telefono_cliente", "question": "📞 Escribe el TELÉFONO del cliente:"},
+    {"key": "producto1", "question": "📦 Escribe el PRIMER PRODUCTO o servicio:"},
+    {"key": "cantidad1", "question": "🔢 Escribe la CANTIDAD del primer producto:"},
+    {"key": "precio1", "question": "💰 Escribe el PRECIO UNITARIO del primer producto:"},
+    {"key": "producto2", "question": "📦 Escribe el SEGUNDO PRODUCTO o servicio:"},
+    {"key": "cantidad2", "question": "🔢 Escribe la CANTIDAD del segundo producto:"},
+    {"key": "precio2", "question": "💰 Escribe el PRECIO UNITARIO del segundo producto:"},
+    {"key": "producto3", "question": "📦 Escribe el TERCER PRODUCTO o servicio:"},
+    {"key": "cantidad3", "question": "🔢 Escribe la CANTIDAD del tercer producto:"},
+    {"key": "precio3", "question": "💰 Escribe el PRECIO UNITARIO del tercer producto:"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

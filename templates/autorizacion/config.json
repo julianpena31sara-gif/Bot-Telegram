@@ -1,0 +1,15 @@
+{
+  "name": "Autorización",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_autorizante", "question": "📝 Escribe el NOMBRE COMPLETO del AUTORIZANTE:"},
+    {"key": "cedula_autorizante", "question": "🪪 Escribe la CÉDULA del AUTORIZANTE:"},
+    {"key": "nombre_autorizado", "question": "📝 Escribe el NOMBRE COMPLETO del AUTORIZADO:"},
+    {"key": "cedula_autorizado", "question": "🪪 Escribe la CÉDULA del AUTORIZADO:"},
+    {"key": "motivo", "question": "📋 Escribe el MOTIVO de la autorización:"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

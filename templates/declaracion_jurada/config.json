@@ -1,0 +1,13 @@
+{
+  "name": "Declaración Juramentada",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_declarante", "question": "📝 Escribe el NOMBRE COMPLETO del DECLARANTE:"},
+    {"key": "cedula_declarante", "question": "🪪 Escribe la CÉDULA del DECLARANTE:"},
+    {"key": "hecho_declarado", "question": "📋 Escribe el HECHO QUE DECLARA:"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

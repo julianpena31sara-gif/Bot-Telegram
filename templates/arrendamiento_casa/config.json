@@ -1,0 +1,19 @@
+{
+  "name": "Contrato de Arrendamiento (Casa/Apartamento)",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_arrendador", "question": "📝 Escribe el NOMBRE COMPLETO del ARRENDADOR:"},
+    {"key": "cedula_arrendador", "question": "🪪 Escribe la CÉDULA del ARRENDADOR:"},
+    {"key": "nombre_arrendatario", "question": "📝 Escribe el NOMBRE COMPLETO del ARRENDATARIO:"},
+    {"key": "cedula_arrendatario", "question": "🪪 Escribe la CÉDULA del ARRENDATARIO:"},
+    {"key": "direccion_inmueble", "question": "🏠 Escribe la DIRECCIÓN del inmueble:"},
+    {"key": "tipo_inmueble", "question": "🏠 Escribe el TIPO DE INMUEBLE (Casa/Apartamento):"},
+    {"key": "valor_arriendo", "question": "💰 Escribe el VALOR DEL ARRIENDO:"},
+    {"key": "fecha_inicio", "question": "📅 Escribe la FECHA DE INICIO (ej: 01/06/2026):"},
+    {"key": "fecha_fin", "question": "📅 Escribe la FECHA DE FIN (ej: 01/06/2027):"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

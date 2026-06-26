@@ -1,0 +1,17 @@
+{
+  "name": "Compraventa de Inmueble (Casa/Lote)",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_vendedor", "question": "📝 Escribe el NOMBRE COMPLETO del VENDEDOR:"},
+    {"key": "cedula_vendedor", "question": "🪪 Escribe la CÉDULA del VENDEDOR:"},
+    {"key": "nombre_comprador", "question": "📝 Escribe el NOMBRE COMPLETO del COMPRADOR:"},
+    {"key": "cedula_comprador", "question": "🪪 Escribe la CÉDULA del COMPRADOR:"},
+    {"key": "direccion_inmueble", "question": "🏠 Escribe la DIRECCIÓN del inmueble:"},
+    {"key": "matricula_inmobiliaria", "question": "📄 Escribe el NÚMERO DE MATRÍCULA INMOBILIARIA:"},
+    {"key": "valor", "question": "💰 Escribe el VALOR DE COMPRAVENTA:"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

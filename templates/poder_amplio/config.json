@@ -1,0 +1,15 @@
+{
+  "name": "Poder Amplio y Suficiente",
+  "template_file": "template.docx",
+  "fields": [
+    {"key": "nombre_poderdante", "question": "📝 Escribe el NOMBRE COMPLETO del PODERDANTE:"},
+    {"key": "cedula_poderdante", "question": "🪪 Escribe la CÉDULA del PODERDANTE:"},
+    {"key": "nombre_apoderado", "question": "📝 Escribe el NOMBRE COMPLETO del APODERADO:"},
+    {"key": "cedula_apoderado", "question": "🪪 Escribe la CÉDULA del APODERADO:"},
+    {"key": "asunto", "question": "📋 Escribe el ASUNTO o motivo del poder:"},
+    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+  ]
+}

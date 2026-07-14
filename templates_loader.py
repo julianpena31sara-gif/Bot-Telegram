@@ -1,6 +1,9 @@
 import os
 import json
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -32,7 +35,6 @@ def load_all_templates():
     if not TEMPLATES_DIR.exists():
         return templates
 
-    # Primero cargamos todas las plantillas en un diccionario
     templates_dict = {}
     for folder in TEMPLATES_DIR.iterdir():
         if folder.is_dir():
@@ -43,16 +45,14 @@ def load_all_templates():
                         config = json.load(f)
                         config["folder"] = folder.name
                         templates_dict[folder.name] = config
-                        print(f"✅ Plantilla cargada: {config.get('name', folder.name)}")
+                        logger.info(f"✅ Plantilla cargada: {config.get('name', folder.name)}")
                 except Exception as e:
-                    print(f"❌ Error al cargar {config_path}: {e}")
+                    logger.error(f"❌ Error al cargar {config_path}: {e}")
     
-    # Luego las agregamos en el orden definido
     for folder_name in ORDEN_MENU:
         if folder_name in templates_dict:
             templates.append(templates_dict[folder_name])
     
-    # Agregar las que no están en el orden (por si acaso)
     for folder_name, config in templates_dict.items():
         if folder_name not in ORDEN_MENU:
             templates.append(config)

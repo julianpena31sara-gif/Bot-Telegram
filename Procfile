@@ -1,1 +1,1 @@
-worker: python bot.py
+web: gunicorn --workers 1 --threads 1 --timeout 120 bot:app

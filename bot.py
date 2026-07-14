@@ -28,10 +28,8 @@ OUTPUT_DIR = "generados"
 Path(OUTPUT_DIR).mkdir(exist_ok=True)
 TEMPLATES_DIR = Path("templates")
 
-# --- SESIONES ---
+# --- SESIONES (compartidas en un solo worker) ---
 user_sessions = {}
-
-# --- PARA EVITAR DUPLICADOS ---
 ultimos_mensajes = {}
 
 # ========== FUNCIONES DE ULTRAMSG ==========
@@ -97,18 +95,14 @@ def generar_word(answers, folder, config_data):
     logger.info(f"Documento generado: {output_filename}")
     return str(output_path), output_filename
 
-# ========== FUNCIÓN PARA ENVIAR MENÚ (UN SOLO MENSAJE) ==========
+# ========== FUNCIÓN PARA ENVIAR MENÚ ==========
 def enviar_menu(sender, templates):
-    """Envía el menú en un solo mensaje de WhatsApp"""
     saludo = obtener_saludo()
-    
-    # Construir el menú completo en un solo mensaje
     menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
     for i, t in enumerate(templates, 1):
         menu += f"{i}. {t['name']}\n"
     menu += "\nResponde con el número de la opción."
     
-    # Enviar el menú como un solo mensaje
     enviar_whatsapp(sender, menu)
     logger.info(f"📋 Menú enviado a {sender}")
 

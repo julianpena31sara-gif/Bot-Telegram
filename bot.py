@@ -31,8 +31,8 @@ TEMPLATES_DIR = Path("templates")
 # --- SESIONES ---
 user_sessions = {}
 
-# --- PARA EVITAR DUPLICADOS (CON NORMALIZACIÓN) ---
-ultimos_mensajes = {}  # {sender: deque(mensajes_normalizados)}
+# --- PARA EVITAR DUPLICADOS ---
+ultimos_mensajes = {}
 
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
@@ -97,13 +97,18 @@ def generar_word(answers, folder, config_data):
     logger.info(f"Documento generado: {output_filename}")
     return str(output_path), output_filename
 
-# ========== FUNCIÓN PARA ENVIAR MENÚ ==========
+# ========== FUNCIÓN PARA ENVIAR MENÚ (UN SOLO MENSAJE) ==========
 def enviar_menu(sender, templates):
+    """Envía el menú en un solo mensaje de WhatsApp"""
     saludo = obtener_saludo()
+    
+    # Construir el menú completo en un solo mensaje
     menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
     for i, t in enumerate(templates, 1):
         menu += f"{i}. {t['name']}\n"
     menu += "\nResponde con el número de la opción."
+    
+    # Enviar el menú como un solo mensaje
     enviar_whatsapp(sender, menu)
     logger.info(f"📋 Menú enviado a {sender}")
 
@@ -157,9 +162,8 @@ def webhook():
         return "OK", 200
     
     # =========================================================
-    # 🔇 FILTRO 3: EVITAR DUPLICADOS (NORMALIZACIÓN + HISTORIAL)
+    # 🔇 FILTRO 3: EVITAR DUPLICADOS
     # =========================================================
-    # Normalizar mensaje: minúsculas, sin espacios extra
     mensaje_normalizado = incoming_msg.lower().strip()
     
     if sender_clean not in ultimos_mensajes:
@@ -167,12 +171,10 @@ def webhook():
     
     historial = ultimos_mensajes[sender_clean]
     
-    # Si el mensaje normalizado ya está en el historial, es duplicado
     if mensaje_normalizado in historial:
         logger.info(f"🔇 DUPLICADO DETECTADO de {sender_clean}: {incoming_msg[:20]}")
         return "OK", 200
     
-    # Agregar al historial
     historial.append(mensaje_normalizado)
     
     # =========================================================

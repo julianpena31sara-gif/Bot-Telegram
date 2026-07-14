@@ -30,8 +30,8 @@ TEMPLATES_DIR = Path("templates")
 # --- SESIONES ---
 user_sessions = {}
 
-# --- PARA EVITAR DUPLICADOS (guardar IDs de mensajes procesados) ---
-mensajes_procesados = set()
+# --- PARA EVITAR DUPLICADOS ---
+ultimos_mensajes = {}  # {sender: ultimo_mensaje}
 
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
@@ -107,7 +107,7 @@ def descargar_archivo(filename):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    global mensajes_procesados
+    global ultimos_mensajes
     
     data = request.get_json()
     logger.info(f"Mensaje recibido: {data}")
@@ -127,22 +127,24 @@ def webhook():
         # 🔇 FILTRO 2: EVITAR DUPLICADOS POR ID DE MENSAJE
         # =========================================================
         message_id = message_data.get("id", "")
-        if message_id in mensajes_procesados:
-            logger.info(f"🔇 IGNORANDO mensaje duplicado: {message_id}")
+        sender = message_data.get("from", "").replace("@c.us", "").replace("+", "")
+        
+        # Verificar si ya procesamos este mensaje
+        if sender in ultimos_mensajes and ultimos_mensajes[sender] == message_id:
+            logger.info(f"🔇 IGNORANDO mensaje duplicado (mismo ID): {message_id}")
             return "OK", 200
         
-        # Marcar el mensaje como procesado
-        if message_id:
-            mensajes_procesados.add(message_id)
-            # Limitar el tamaño del set para evitar memory leak
-            if len(mensajes_procesados) > 1000:
-                mensajes_procesados = set(list(mensajes_procesados)[-500:])
+        # Guardar el ID del mensaje
+        ultimos_mensajes[sender] = message_id
+        
+        # Limitar el diccionario para evitar memory leak
+        if len(ultimos_mensajes) > 100:
+            ultimos_mensajes.clear()
         
         # =========================================================
         # 🔇 FILTRO 3: ANTI-BUCLE
         # =========================================================
         incoming_msg = message_data.get("body", "").strip()
-        sender = message_data.get("from", "").replace("@c.us", "").replace("+", "")
         sender_name = message_data.get("pushname", sender)
         
         # Ignorar mensajes enviados por el propio bot
@@ -174,20 +176,17 @@ def webhook():
         
         logger.info(f"✅ Mensaje procesado de {sender_name} ({sender_clean}): {incoming_msg}")
         
-        # --- MENÚ PRINCIPAL (MOSTRAR TODOS LOS DOCUMENTOS) ---
+        # --- MENÚ PRINCIPAL ---
         if incoming_msg.lower() == "hola":
             saludo = obtener_saludo()
             templates = templates_loader.load_all_templates()
             
-            # MOSTRAR TODOS LOS DOCUMENTOS (sin límite)
             menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
             for i, t in enumerate(templates, 1):
                 menu += f"{i}. {t['name']}\n"
             menu += "\nResponde con el número de la opción."
             
             enviar_whatsapp(sender_clean, menu)
-            
-            # Inicializar o reiniciar sesión
             if sender_clean not in user_sessions:
                 user_sessions[sender_clean] = {"estado": "SELECT_TEMPLATE", "step": 0, "answers": {}}
             else:

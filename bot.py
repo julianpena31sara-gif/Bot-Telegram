@@ -103,24 +103,18 @@ def enviar_menu(sender, templates):
     """Envía el menú dividido en partes si es muy largo"""
     saludo = obtener_saludo()
     
-    # Primera parte: saludo + introducción
     parte1 = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
     
-    # Lista de documentos (cada uno con su número)
     documentos = []
     for i, t in enumerate(templates, 1):
         documentos.append(f"{i}. {t['name']}")
     
-    # Unir todos los documentos en una sola cadena
     lista_completa = "\n".join(documentos)
     parte_final = "\n\nResponde con el número de la opción."
     
-    # Si el mensaje completo es demasiado largo, dividirlo
     mensaje_completo = parte1 + lista_completa + parte_final
     
-    # Verificar si el mensaje excede el límite de caracteres (Ultramsg ~ 1000 caracteres)
     if len(mensaje_completo) > 900:
-        # Dividir en dos partes
         mitad = len(documentos) // 2
         parte1_docs = documentos[:mitad]
         parte2_docs = documentos[mitad:]
@@ -129,7 +123,6 @@ def enviar_menu(sender, templates):
         mensaje2 = "📋 Resto de documentos:\n" + "\n".join(parte2_docs) + parte_final
         
         enviar_whatsapp(sender, mensaje1)
-        # Pequeña pausa para evitar problemas de orden
         import time
         time.sleep(0.5)
         enviar_whatsapp(sender, mensaje2)
@@ -188,18 +181,23 @@ def webhook():
         return "OK", 200
     
     # =========================================================
-    # 🔇 FILTRO 3: EVITAR DUPLICADOS POR HISTORIAL
+    # 🔇 FILTRO 3: EVITAR DUPLICADOS POR HISTORIAL (CON NORMALIZACIÓN)
     # =========================================================
+    # Normalizar el mensaje: minúsculas, sin espacios extra
+    mensaje_normalizado = incoming_msg.lower().strip()
+    
     if sender_clean not in ultimos_mensajes:
         ultimos_mensajes[sender_clean] = deque(maxlen=10)
     
     historial = ultimos_mensajes[sender_clean]
     
-    if incoming_msg in historial:
+    # Verificar si el mensaje normalizado ya está en el historial
+    if mensaje_normalizado in historial:
         logger.info(f"🔇 DUPLICADO DETECTADO de {sender_clean}: {incoming_msg[:20]}")
         return "OK", 200
     
-    historial.append(incoming_msg)
+    # Agregar el mensaje normalizado al historial
+    historial.append(mensaje_normalizado)
     
     # =========================================================
     # FIN DEL FILTRO
@@ -207,11 +205,10 @@ def webhook():
     
     logger.info(f"✅ PROCESANDO: {sender_clean}: {incoming_msg[:30]}")
     
-    # --- MENÚ PRINCIPAL (USAR LA NUEVA FUNCIÓN) ---
+    # --- MENÚ PRINCIPAL ---
     if incoming_msg.lower() == "hola":
         templates = templates_loader.load_all_templates()
         
-        # Usar la función que divide el menú si es necesario
         enviar_menu(sender_clean, templates)
         
         if sender_clean not in user_sessions:
@@ -224,14 +221,12 @@ def webhook():
         return "OK", 200
     
     # --- VER MÁS DOCUMENTOS ---
-    if incoming_msg.lower() == "más" or incoming_msg.lower() == "mas":
+    if incoming_msg.lower() in ["más", "mas"]:
         templates = templates_loader.load_all_templates()
-        # Mostrar solo los documentos que no se mostraron en la primera parte
         documentos = []
         for i, t in enumerate(templates, 1):
             documentos.append(f"{i}. {t['name']}")
         
-        # Asumiendo que la primera parte mostró la mitad
         mitad = len(documentos) // 2
         parte2_docs = documentos[mitad:]
         

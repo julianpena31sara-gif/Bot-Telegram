@@ -22,7 +22,7 @@ ULTRA_INSTANCE_ID = os.getenv("ULTRA_INSTANCE_ID")
 ULTRA_TOKEN = os.getenv("ULTRA_TOKEN")
 OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP", "573247247478")
 CONNECTED_NUMBER = os.getenv("CONNECTED_NUMBER", "573167913339")
-BASE_URL = os.getenv("BASE_URL", "https://bot-telegram-production-f78f.up.railway.app")
+BASE_URL = os.getenv("BASE_URL", "https://bot-telegram-production-4164.up.railway.app")
 
 # --- CARPETAS ---
 OUTPUT_DIR = "generados"
@@ -32,8 +32,8 @@ TEMPLATES_DIR = Path("templates")
 # --- SESIONES ---
 user_sessions = {}
 
-# --- PARA EVITAR DUPLICADOS (por usuario) ---
-ultimos_mensajes = {}  # {sender: deque([mensajes])}
+# --- PARA EVITAR DUPLICADOS ---
+ultimos_mensajes = {}
 
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
@@ -98,6 +98,46 @@ def generar_word(answers, folder, config_data):
     logger.info(f"Documento generado: {output_filename}")
     return str(output_path), output_filename
 
+# ========== FUNCIÓN PARA ENVIAR MENÚ (DIVIDIDO) ==========
+def enviar_menu(sender, templates):
+    """Envía el menú dividido en partes si es muy largo"""
+    saludo = obtener_saludo()
+    
+    # Primera parte: saludo + introducción
+    parte1 = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
+    
+    # Lista de documentos (cada uno con su número)
+    documentos = []
+    for i, t in enumerate(templates, 1):
+        documentos.append(f"{i}. {t['name']}")
+    
+    # Unir todos los documentos en una sola cadena
+    lista_completa = "\n".join(documentos)
+    parte_final = "\n\nResponde con el número de la opción."
+    
+    # Si el mensaje completo es demasiado largo, dividirlo
+    mensaje_completo = parte1 + lista_completa + parte_final
+    
+    # Verificar si el mensaje excede el límite de caracteres (Ultramsg ~ 1000 caracteres)
+    if len(mensaje_completo) > 900:
+        # Dividir en dos partes
+        mitad = len(documentos) // 2
+        parte1_docs = documentos[:mitad]
+        parte2_docs = documentos[mitad:]
+        
+        mensaje1 = parte1 + "\n".join(parte1_docs) + "\n\n" + "Envíame 'más' para ver el resto de documentos."
+        mensaje2 = "📋 Resto de documentos:\n" + "\n".join(parte2_docs) + parte_final
+        
+        enviar_whatsapp(sender, mensaje1)
+        # Pequeña pausa para evitar problemas de orden
+        import time
+        time.sleep(0.5)
+        enviar_whatsapp(sender, mensaje2)
+        logger.info(f"📋 Menú dividido en 2 partes enviado a {sender}")
+    else:
+        enviar_whatsapp(sender, mensaje_completo)
+        logger.info(f"📋 Menú completo enviado a {sender}")
+
 # ========== ENDPOINTS ==========
 @app.route("/descargar/<filename>", methods=["GET"])
 def descargar_archivo(filename):
@@ -148,25 +188,18 @@ def webhook():
         return "OK", 200
     
     # =========================================================
-    # 🔇 FILTRO 3: EVITAR DUPLICADOS POR HISTORIAL DE MENSAJES
+    # 🔇 FILTRO 3: EVITAR DUPLICADOS POR HISTORIAL
     # =========================================================
-    
-    # Inicializar el historial para este usuario si no existe
     if sender_clean not in ultimos_mensajes:
         ultimos_mensajes[sender_clean] = deque(maxlen=10)
     
     historial = ultimos_mensajes[sender_clean]
     
-    # Verificar si este mensaje ya está en el historial
     if incoming_msg in historial:
         logger.info(f"🔇 DUPLICADO DETECTADO de {sender_clean}: {incoming_msg[:20]}")
         return "OK", 200
     
-    # Agregar el mensaje al historial
     historial.append(incoming_msg)
-    
-    # Limpiar historiales viejos (más de 30 segundos sin actividad)
-    # No necesitamos hacer esto con deque porque tiene maxlen
     
     # =========================================================
     # FIN DEL FILTRO
@@ -174,18 +207,12 @@ def webhook():
     
     logger.info(f"✅ PROCESANDO: {sender_clean}: {incoming_msg[:30]}")
     
-    # --- MENÚ PRINCIPAL ---
+    # --- MENÚ PRINCIPAL (USAR LA NUEVA FUNCIÓN) ---
     if incoming_msg.lower() == "hola":
-        saludo = obtener_saludo()
         templates = templates_loader.load_all_templates()
         
-        menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
-        for i, t in enumerate(templates, 1):
-            menu += f"{i}. {t['name']}\n"
-        menu += "\nResponde con el número de la opción."
-        
-        # Enviar el menú solo UNA vez
-        enviar_whatsapp(sender_clean, menu)
+        # Usar la función que divide el menú si es necesario
+        enviar_menu(sender_clean, templates)
         
         if sender_clean not in user_sessions:
             user_sessions[sender_clean] = {"estado": "SELECT_TEMPLATE", "step": 0, "answers": {}}
@@ -194,7 +221,26 @@ def webhook():
             user_sessions[sender_clean]["step"] = 0
             user_sessions[sender_clean]["answers"] = {}
         
-        logger.info(f"📋 Menú enviado a {sender_clean}")
+        return "OK", 200
+    
+    # --- VER MÁS DOCUMENTOS ---
+    if incoming_msg.lower() == "más" or incoming_msg.lower() == "mas":
+        templates = templates_loader.load_all_templates()
+        # Mostrar solo los documentos que no se mostraron en la primera parte
+        documentos = []
+        for i, t in enumerate(templates, 1):
+            documentos.append(f"{i}. {t['name']}")
+        
+        # Asumiendo que la primera parte mostró la mitad
+        mitad = len(documentos) // 2
+        parte2_docs = documentos[mitad:]
+        
+        if parte2_docs:
+            mensaje = "📋 Resto de documentos:\n" + "\n".join(parte2_docs) + "\n\nResponde con el número de la opción."
+            enviar_whatsapp(sender_clean, mensaje)
+        else:
+            enviar_whatsapp(sender_clean, "Ya viste todos los documentos. Responde con el número de la opción.")
+        
         return "OK", 200
     
     # --- SELECCIONAR PLANTILLA ---

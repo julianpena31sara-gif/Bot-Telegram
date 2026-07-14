@@ -4,11 +4,12 @@ import requests
 import json
 from flask import Flask, request, send_from_directory
 import pytz
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from docxtpl import DocxTemplate
 import templates_loader
 import contadores
+import hashlib
 
 # --- CONFIGURACIÓN ---
 logging.basicConfig(level=logging.INFO)
@@ -30,8 +31,8 @@ TEMPLATES_DIR = Path("templates")
 # --- SESIONES ---
 user_sessions = {}
 
-# --- PARA EVITAR DUPLICADOS ---
-mensajes_procesados = set()
+# --- PARA EVITAR DUPLICADOS (por tiempo) ---
+ultimo_procesamiento = {}  # {sender: timestamp}
 
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
@@ -107,40 +108,23 @@ def descargar_archivo(filename):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    global mensajes_procesados
+    global ultimo_procesamiento
     
     data = request.get_json()
     
-    # Extraer información clave
+    # =========================================================
+    # 🔇 FILTRO 1: SOLO PROCESAR MENSAJES RECIBIDOS
+    # =========================================================
     event_type = data.get("event_type", "")
+    
+    if event_type != "message_received":
+        logger.info(f"🔇 IGNORANDO evento: {event_type}")
+        return "OK", 200
+    
     message_data = data.get("data", {})
     
     # =========================================================
-    # 🔇 FILTRO 1: SOLO PROCESAR EVENTOS DE MENSAJES RECIBIDOS
-    # =========================================================
-    if event_type != "message_received":
-        logger.info(f"🔇 IGNORANDO evento: {event_type} (no es message_received)")
-        return "OK", 200
-    
-    # Extraer ID del mensaje (para evitar duplicados)
-    message_id = message_data.get("id", "")
-    
-    # =========================================================
-    # 🔇 FILTRO 2: EVITAR DUPLICADOS POR ID
-    # =========================================================
-    if message_id in mensajes_procesados:
-        logger.info(f"🔇 IGNORANDO mensaje duplicado (ID ya procesado): {message_id}")
-        return "OK", 200
-    
-    # Guardar el ID como procesado
-    if message_id:
-        mensajes_procesados.add(message_id)
-        # Limitar el set para evitar memory leak
-        if len(mensajes_procesados) > 500:
-            mensajes_procesados = set(list(mensajes_procesados)[-200:])
-    
-    # =========================================================
-    # 🔇 FILTRO 3: ANTI-BUCLE
+    # 🔇 FILTRO 2: ANTI-BUCLE (ignorar mensajes del bot)
     # =========================================================
     incoming_msg = message_data.get("body", "").strip()
     sender = message_data.get("from", "").replace("@c.us", "").replace("+", "")
@@ -150,17 +134,17 @@ def webhook():
     
     # Ignorar mensajes enviados por el propio bot
     if message_data.get("fromMe") == True or message_data.get("self") == True:
-        logger.info(f"🔇 IGNORANDO mensaje del propio bot: {incoming_msg}")
+        logger.info(f"🔇 IGNORANDO mensaje del propio bot")
         return "OK", 200
     
     # Ignorar mensajes del número conectado
     if sender_clean == connected_clean:
-        logger.info(f"🔇 IGNORANDO mensaje del número conectado: {incoming_msg}")
+        logger.info(f"🔇 IGNORANDO mensaje del número conectado")
         return "OK", 200
     
     # Ignorar mensajes de la dueña
     if OWNER_WHATSAPP and sender_clean == OWNER_WHATSAPP.replace("+", "").replace(" ", ""):
-        logger.info(f"🔇 IGNORANDO mensaje de la dueña: {incoming_msg}")
+        logger.info(f"🔇 IGNORANDO mensaje de la dueña")
         return "OK", 200
     
     # Ignorar mensajes vacíos
@@ -169,10 +153,32 @@ def webhook():
         return "OK", 200
     
     # =========================================================
+    # 🔇 FILTRO 3: EVITAR DUPLICADOS POR TIEMPO
+    # =========================================================
+    ahora = datetime.now()
+    
+    if sender_clean in ultimo_procesamiento:
+        tiempo_ultimo = ultimo_procesamiento[sender_clean]
+        diferencia = (ahora - tiempo_ultimo).total_seconds()
+        
+        # Si el último mensaje del mismo usuario fue hace menos de 2 segundos, es duplicado
+        if diferencia < 2.0:
+            logger.info(f"🔇 IGNORANDO mensaje duplicado de {sender_clean} (hace {diferencia:.2f}s)")
+            return "OK", 200
+    
+    # Actualizar el tiempo del último mensaje
+    ultimo_procesamiento[sender_clean] = ahora
+    
+    # Limpiar entradas viejas (más de 10 segundos)
+    for s, t in list(ultimo_procesamiento.items()):
+        if (ahora - t).total_seconds() > 10:
+            del ultimo_procesamiento[s]
+    
+    # =========================================================
     # FIN DEL FILTRO
     # =========================================================
     
-    logger.info(f"✅ PROCESANDO: {sender_name} ({sender_clean}): {incoming_msg}")
+    logger.info(f"✅ PROCESANDO: {sender_name} ({sender_clean}): {incoming_msg[:30]}")
     
     # --- MENÚ PRINCIPAL ---
     if incoming_msg.lower() == "hola":

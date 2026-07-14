@@ -117,14 +117,14 @@ def webhook():
         event_type = data.get("event_type", "")
         
         # =========================================================
-        # 🔇 FILTRO: SOLO PROCESAR MENSAJES RECIBIDOS
+        # 🔇 FILTRO 1: SOLO PROCESAR MENSAJES RECIBIDOS
         # =========================================================
         if event_type != "message_received":
             logger.info(f"🔇 IGNORANDO evento: {event_type}")
             return "OK", 200
         
         # =========================================================
-        # 🔇 FILTRO: EVITAR DUPLICADOS POR ID DE MENSAJE
+        # 🔇 FILTRO 2: EVITAR DUPLICADOS POR ID DE MENSAJE
         # =========================================================
         message_id = message_data.get("id", "")
         if message_id in mensajes_procesados:
@@ -139,18 +139,18 @@ def webhook():
                 mensajes_procesados = set(list(mensajes_procesados)[-500:])
         
         # =========================================================
-        # 🔇 FILTRO ANTI-BUCLE
+        # 🔇 FILTRO 3: ANTI-BUCLE
         # =========================================================
         incoming_msg = message_data.get("body", "").strip()
         sender = message_data.get("from", "").replace("@c.us", "").replace("+", "")
         sender_name = message_data.get("pushname", sender)
         
-        # 1. Ignorar mensajes enviados por el propio bot
+        # Ignorar mensajes enviados por el propio bot
         if message_data.get("fromMe") == True or message_data.get("self") == True:
             logger.info(f"🔇 IGNORANDO mensaje del propio bot: {incoming_msg}")
             return "OK", 200
         
-        # 2. Ignorar mensajes del número conectado
+        # Ignorar mensajes del número conectado
         connected_clean = CONNECTED_NUMBER.replace("+", "").replace(" ", "")
         sender_clean = sender.replace("+", "").replace(" ", "")
         
@@ -158,12 +158,12 @@ def webhook():
             logger.info(f"🔇 IGNORANDO mensaje del número conectado: {incoming_msg}")
             return "OK", 200
         
-        # 3. Ignorar mensajes de la dueña
+        # Ignorar mensajes de la dueña
         if OWNER_WHATSAPP and sender_clean == OWNER_WHATSAPP.replace("+", "").replace(" ", ""):
             logger.info(f"🔇 IGNORANDO mensaje de la dueña: {incoming_msg}")
             return "OK", 200
         
-        # 4. Ignorar mensajes vacíos
+        # Ignorar mensajes vacíos
         if not incoming_msg:
             logger.info(f"🔇 IGNORANDO mensaje vacío")
             return "OK", 200
@@ -174,39 +174,26 @@ def webhook():
         
         logger.info(f"✅ Mensaje procesado de {sender_name} ({sender_clean}): {incoming_msg}")
         
-        # --- MENÚ PRINCIPAL ---
+        # --- MENÚ PRINCIPAL (MOSTRAR TODOS LOS DOCUMENTOS) ---
         if incoming_msg.lower() == "hola":
             saludo = obtener_saludo()
             templates = templates_loader.load_all_templates()
             
-            # Mostrar solo los primeros 10 para evitar mensajes muy largos
-            if len(templates) > 10:
-                menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
-                for i, t in enumerate(templates, 1):
-                    menu += f"{i}. {t['name']}\n"
-                    if i == 10:
-                        menu += f"\n📌 Hay {len(templates) - 10} documentos más. Escribe 'ver todos' para la lista completa."
-                        break
-                menu += "\nResponde con el número de la opción."
-            else:
-                menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
-                for i, t in enumerate(templates, 1):
-                    menu += f"{i}. {t['name']}\n"
-                menu += "\nResponde con el número de la opción."
-            
-            enviar_whatsapp(sender_clean, menu)
-            if sender_clean not in user_sessions:
-                user_sessions[sender_clean] = {"estado": "SELECT_TEMPLATE", "step": 0, "answers": {}}
-            return "OK", 200
-        
-        # --- VER TODOS LOS DOCUMENTOS ---
-        if incoming_msg.lower() == "ver todos":
-            templates = templates_loader.load_all_templates()
-            menu = "📋 LISTA COMPLETA DE DOCUMENTOS\n\n"
+            # MOSTRAR TODOS LOS DOCUMENTOS (sin límite)
+            menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
             for i, t in enumerate(templates, 1):
                 menu += f"{i}. {t['name']}\n"
             menu += "\nResponde con el número de la opción."
+            
             enviar_whatsapp(sender_clean, menu)
+            
+            # Inicializar o reiniciar sesión
+            if sender_clean not in user_sessions:
+                user_sessions[sender_clean] = {"estado": "SELECT_TEMPLATE", "step": 0, "answers": {}}
+            else:
+                user_sessions[sender_clean]["estado"] = "SELECT_TEMPLATE"
+                user_sessions[sender_clean]["step"] = 0
+                user_sessions[sender_clean]["answers"] = {}
             return "OK", 200
         
         # --- SELECCIONAR PLANTILLA ---

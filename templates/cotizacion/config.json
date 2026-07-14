@@ -2,21 +2,25 @@
   "name": "Cotización",
   "template_file": "template.docx",
   "fields": [
-    {"key": "nombre_cliente", "question": "📝 Escribe el NOMBRE COMPLETO del CLIENTE:"},
-    {"key": "cedula_cliente", "question": "🪪 Escribe la CÉDULA del CLIENTE:"},
-    {"key": "telefono_cliente", "question": "📞 Escribe el TELÉFONO del cliente:"},
-    {"key": "producto1", "question": "📦 Escribe el PRIMER PRODUCTO o servicio:"},
-    {"key": "cantidad1", "question": "🔢 Escribe la CANTIDAD del primer producto:"},
-    {"key": "precio1", "question": "💰 Escribe el PRECIO UNITARIO del primer producto:"},
-    {"key": "producto2", "question": "📦 Escribe el SEGUNDO PRODUCTO o servicio:"},
-    {"key": "cantidad2", "question": "🔢 Escribe la CANTIDAD del segundo producto:"},
-    {"key": "precio2", "question": "💰 Escribe el PRECIO UNITARIO del segundo producto:"},
-    {"key": "producto3", "question": "📦 Escribe el TERCER PRODUCTO o servicio:"},
-    {"key": "cantidad3", "question": "🔢 Escribe la CANTIDAD del tercer producto:"},
-    {"key": "precio3", "question": "💰 Escribe el PRECIO UNITARIO del tercer producto:"},
-    {"key": "ciudad", "question": "🏙️ Escribe la CIUDAD:"},
-    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 26):"},
-    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: junio):"},
-    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"}
+    {"key": "dia", "question": "📅 Escribe el DÍA (ej: 13):"},
+    {"key": "mes", "question": "📅 Escribe el MES en letras (ej: julio):"},
+    {"key": "año", "question": "📅 Escribe el AÑO (ej: 2026):"},
+    {"key": "validez", "question": "⏳ Fecha de VALIDEZ (ej: 30/07/2026):"},
+    
+    {"key": "nombre_cliente", "question": "👤 NOMBRE o RAZÓN SOCIAL del cliente:"},
+    {"key": "documento_cliente", "question": "🪪 NIT/CÉDULA del cliente:"},
+    {"key": "direccion_cliente", "question": "🏠 DIRECCIÓN del cliente:"},
+    {"key": "telefono_cliente", "question": "📞 TELÉFONO del cliente:"},
+    {"key": "email_cliente", "question": "📧 CORREO del cliente:"},
+    
+    {"key": "nombre_emisor", "question": "👤 NOMBRE o RAZÓN SOCIAL del emisor (quién cotiza):"},
+    {"key": "documento_emisor", "question": "🪪 NIT/CÉDULA del emisor:"},
+    {"key": "direccion_emisor", "question": "🏠 DIRECCIÓN del emisor:"},
+    {"key": "telefono_emisor", "question": "📞 TELÉFONO del emisor:"},
+    {"key": "email_emisor", "question": "📧 CORREO del emisor:"},
+    
+    {"key": "productos", "question": "📦 Escribe los PRODUCTOS/SERVICIOS (uno por línea, formato: Descripción | Cantidad | Precio Unitario):"},
+    {"key": "total", "question": "💰 Escribe el TOTAL de la cotización:"},
+    {"key": "observaciones", "question": "📋 OBSERVACIONES (opcional, presiona ENTER para saltar):"}
   ]
 }

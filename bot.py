@@ -8,13 +8,14 @@ from datetime import datetime
 from pathlib import Path
 from docxtpl import DocxTemplate
 import templates_loader
+import contadores  # <--- NUEVO: importamos el módulo de contadores
 
 # --- CONFIGURACIÓN ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
-# --- VARIABLES DE ENTORNO (CONFIGURAR EN RAILWAY) ---
+# --- VARIABLES DE ENTORNO ---
 ULTRA_INSTANCE_ID = os.getenv("ULTRA_INSTANCE_ID")
 ULTRA_TOKEN = os.getenv("ULTRA_TOKEN")
 OWNER_WHATSAPP = os.getenv("OWNER_WHATSAPP", "573247247478")
@@ -31,7 +32,6 @@ user_sessions = {}
 
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
-    """Envía un mensaje de texto usando Ultramsg"""
     url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/chat"
     payload = {"token": ULTRA_TOKEN, "to": numero, "body": mensaje}
     try:
@@ -46,7 +46,6 @@ def enviar_whatsapp(numero, mensaje):
         return None
 
 def enviar_documento_ultramsg(numero, archivo_path, nombre_archivo):
-    """Envía un documento usando la URL pública generada por Railway"""
     descarga_url = f"{BASE_URL}/descargar/{nombre_archivo}"
     url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/document"
     payload = {
@@ -54,7 +53,7 @@ def enviar_documento_ultramsg(numero, archivo_path, nombre_archivo):
         "to": numero,
         "filename": nombre_archivo,
         "document": descarga_url,
-        "caption": "📄 Documento generado automáticamente por Papelería Líder"
+        "caption": "📄 Documento generado automáticamente"
     }
     try:
         response = requests.post(url, json=payload, timeout=10)
@@ -68,7 +67,6 @@ def enviar_documento_ultramsg(numero, archivo_path, nombre_archivo):
         return None
 
 def obtener_saludo():
-    """Saludo según la hora en Colombia"""
     colombia_tz = pytz.timezone('America/Bogota')
     hour = datetime.now(colombia_tz).hour
     if 6 <= hour < 12:
@@ -86,7 +84,6 @@ def generar_word(answers, folder, config_data):
         raise FileNotFoundError(f"Plantilla no encontrada: {template_path}")
     
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
-    # Usar el nombre de la carpeta como base para el nombre del archivo
     output_filename = f"{folder}_{now}.docx"
     output_path = Path(OUTPUT_DIR) / output_filename
     
@@ -100,7 +97,6 @@ def generar_word(answers, folder, config_data):
 # ========== ENDPOINTS ==========
 @app.route("/descargar/<filename>", methods=["GET"])
 def descargar_archivo(filename):
-    """Sirve el archivo generado para su descarga"""
     try:
         return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
     except Exception as e:
@@ -109,7 +105,6 @@ def descargar_archivo(filename):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    """Recibe mensajes de Ultramsg y responde rápidamente"""
     data = request.get_json()
     logger.info(f"Mensaje recibido: {data}")
     
@@ -122,7 +117,6 @@ def webhook():
         connected_clean = CONNECTED_NUMBER.replace("+", "").replace(" ", "")
         sender_clean = sender.replace("+", "").replace(" ", "")
         
-        # Ignorar mensajes del número conectado y de la dueña
         if sender_clean == connected_clean:
             logger.info(f"🔇 Ignorando mensaje del número conectado: {incoming_msg}")
             return "OK", 200
@@ -160,6 +154,16 @@ def webhook():
                     user_sessions[sender_clean]["estado"] = "ASKING_DATA"
                     
                     fields = template["fields"]
+                    
+                    # --- GENERAR NÚMEROS CONSECUTIVOS AUTOMÁTICAMENTE ---
+                    folder_name = template["folder"]
+                    answers = user_sessions[sender_clean]["answers"]
+                    
+                    if folder_name == "cotizacion":
+                        answers["numero_cotizacion"] = contadores.obtener_siguiente_numero("cotizacion", "COT")
+                    elif folder_name == "cuenta_cobro":
+                        answers["numero_cuenta"] = contadores.obtener_siguiente_numero("cuenta_cobro", "CC")
+                    
                     first_question = fields[0]["question"]
                     enviar_whatsapp(sender_clean, first_question)
                 else:
@@ -215,10 +219,8 @@ def webhook():
                     
                     output_path, output_filename = generar_word(answers, folder, config_data)
                     
-                    # Mensaje al cliente
-                    enviar_whatsapp(sender_clean, "✅ Solicitud enviada correctamente.\n\nLa encargada de Papelería Líder revisará tu documento y te contactará en breve.")
+                    enviar_whatsapp(sender_clean, "✅ Solicitud enviada correctamente.\n\nLa encargada revisará tu documento y te contactará en breve.")
                     
-                    # Enviar documento a la dueña
                     enviar_documento_ultramsg(OWNER_WHATSAPP, output_path, output_filename)
                     mensaje_duena = f"📄 Nuevo documento generado\n\nSolicitado por: {sender_clean}\nDocumento: {config_data.get('name', 'Documento')}"
                     enviar_whatsapp(OWNER_WHATSAPP, mensaje_duena)
@@ -247,7 +249,7 @@ def webhook():
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Bot de WhatsApp funcionando con Papelería Líder"
+    return "Bot de WhatsApp funcionando"
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

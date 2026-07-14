@@ -30,6 +30,9 @@ TEMPLATES_DIR = Path("templates")
 # --- SESIONES ---
 user_sessions = {}
 
+# --- PARA EVITAR DUPLICADOS (guardar IDs de mensajes procesados) ---
+mensajes_procesados = set()
+
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
     url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/chat"
@@ -104,49 +107,63 @@ def descargar_archivo(filename):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    global mensajes_procesados
+    
     data = request.get_json()
     logger.info(f"Mensaje recibido: {data}")
     
     if data and "data" in data:
         message_data = data["data"]
-        
-        # =========================================================
-        # 🔇 FILTRO POR TIPO DE EVENTO (EVITA MENSAJES DUPLICADOS)
-        # =========================================================
         event_type = data.get("event_type", "")
         
-        # Solo procesamos mensajes recibidos (no los que el bot envía)
+        # =========================================================
+        # 🔇 FILTRO: SOLO PROCESAR MENSAJES RECIBIDOS
+        # =========================================================
         if event_type != "message_received":
-            logger.info(f"🔇 IGNORANDO evento de tipo: {event_type} (no es un mensaje entrante)")
+            logger.info(f"🔇 IGNORANDO evento: {event_type}")
             return "OK", 200
         
         # =========================================================
-        # 🔇 FILTRO ANTI-BUCLE (MEJORADO)
+        # 🔇 FILTRO: EVITAR DUPLICADOS POR ID DE MENSAJE
         # =========================================================
+        message_id = message_data.get("id", "")
+        if message_id in mensajes_procesados:
+            logger.info(f"🔇 IGNORANDO mensaje duplicado: {message_id}")
+            return "OK", 200
         
+        # Marcar el mensaje como procesado
+        if message_id:
+            mensajes_procesados.add(message_id)
+            # Limitar el tamaño del set para evitar memory leak
+            if len(mensajes_procesados) > 1000:
+                mensajes_procesados = set(list(mensajes_procesados)[-500:])
+        
+        # =========================================================
+        # 🔇 FILTRO ANTI-BUCLE
+        # =========================================================
         incoming_msg = message_data.get("body", "").strip()
         sender = message_data.get("from", "").replace("@c.us", "").replace("+", "")
         sender_name = message_data.get("pushname", sender)
         
-        # 1. Si el mensaje fue enviado por el propio bot
+        # 1. Ignorar mensajes enviados por el propio bot
         if message_data.get("fromMe") == True or message_data.get("self") == True:
-            logger.info(f"🔇 IGNORANDO mensaje enviado por el propio bot: {incoming_msg}")
+            logger.info(f"🔇 IGNORANDO mensaje del propio bot: {incoming_msg}")
             return "OK", 200
         
-        # 2. Si el mensaje viene del número conectado a Ultramsg
+        # 2. Ignorar mensajes del número conectado
         connected_clean = CONNECTED_NUMBER.replace("+", "").replace(" ", "")
         sender_clean = sender.replace("+", "").replace(" ", "")
         
         if sender_clean == connected_clean:
-            logger.info(f"🔇 IGNORANDO mensaje del número conectado ({sender_clean}): {incoming_msg}")
+            logger.info(f"🔇 IGNORANDO mensaje del número conectado: {incoming_msg}")
             return "OK", 200
         
-        # 3. Si el mensaje viene de la dueña
+        # 3. Ignorar mensajes de la dueña
         if OWNER_WHATSAPP and sender_clean == OWNER_WHATSAPP.replace("+", "").replace(" ", ""):
-            logger.info(f"🔇 IGNORANDO mensaje de la dueña ({sender_clean}): {incoming_msg}")
+            logger.info(f"🔇 IGNORANDO mensaje de la dueña: {incoming_msg}")
             return "OK", 200
         
-        # 4. Si el mensaje está vacío
+        # 4. Ignorar mensajes vacíos
         if not incoming_msg:
             logger.info(f"🔇 IGNORANDO mensaje vacío")
             return "OK", 200
@@ -161,13 +178,35 @@ def webhook():
         if incoming_msg.lower() == "hola":
             saludo = obtener_saludo()
             templates = templates_loader.load_all_templates()
-            menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
+            
+            # Mostrar solo los primeros 10 para evitar mensajes muy largos
+            if len(templates) > 10:
+                menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
+                for i, t in enumerate(templates, 1):
+                    menu += f"{i}. {t['name']}\n"
+                    if i == 10:
+                        menu += f"\n📌 Hay {len(templates) - 10} documentos más. Escribe 'ver todos' para la lista completa."
+                        break
+                menu += "\nResponde con el número de la opción."
+            else:
+                menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
+                for i, t in enumerate(templates, 1):
+                    menu += f"{i}. {t['name']}\n"
+                menu += "\nResponde con el número de la opción."
+            
+            enviar_whatsapp(sender_clean, menu)
+            if sender_clean not in user_sessions:
+                user_sessions[sender_clean] = {"estado": "SELECT_TEMPLATE", "step": 0, "answers": {}}
+            return "OK", 200
+        
+        # --- VER TODOS LOS DOCUMENTOS ---
+        if incoming_msg.lower() == "ver todos":
+            templates = templates_loader.load_all_templates()
+            menu = "📋 LISTA COMPLETA DE DOCUMENTOS\n\n"
             for i, t in enumerate(templates, 1):
                 menu += f"{i}. {t['name']}\n"
             menu += "\nResponde con el número de la opción."
             enviar_whatsapp(sender_clean, menu)
-            if sender_clean not in user_sessions:
-                user_sessions[sender_clean] = {"estado": "SELECT_TEMPLATE", "step": 0, "answers": {}}
             return "OK", 200
         
         # --- SELECCIONAR PLANTILLA ---

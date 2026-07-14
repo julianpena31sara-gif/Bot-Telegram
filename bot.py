@@ -28,9 +28,16 @@ OUTPUT_DIR = "generados"
 Path(OUTPUT_DIR).mkdir(exist_ok=True)
 TEMPLATES_DIR = Path("templates")
 
-# --- SESIONES (compartidas en un solo worker) ---
+# --- SESIONES ---
 user_sessions = {}
+
+# --- PARA EVITAR DUPLICADOS ---
 ultimos_mensajes = {}
+
+# --- CACHE DE PLANTILLAS (se carga UNA sola vez al iniciar el bot) ---
+logger.info("Cargando plantillas al iniciar...")
+TEMPLATES_CACHE = templates_loader.load_all_templates()
+logger.info(f"✅ {len(TEMPLATES_CACHE)} plantillas cargadas en memoria")
 
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
@@ -83,26 +90,30 @@ def generar_word(answers, folder, config_data):
     template_path = TEMPLATES_DIR / folder / config_data["template_file"]
     if not template_path.exists():
         raise FileNotFoundError(f"Plantilla no encontrada: {template_path}")
-    
+
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filename = f"{folder}_{now}.docx"
     output_path = Path(OUTPUT_DIR) / output_filename
-    
+
     doc = DocxTemplate(str(template_path))
     doc.render(answers)
     doc.save(str(output_path))
-    
+
     logger.info(f"Documento generado: {output_filename}")
     return str(output_path), output_filename
 
-# ========== FUNCIÓN PARA ENVIAR MENÚ ==========
+# ========== FUNCIÓN PARA ENVIAR MENÚ (UN SOLO MENSAJE) ==========
 def enviar_menu(sender, templates):
+    """Envía el menú en un solo mensaje de WhatsApp"""
     saludo = obtener_saludo()
+
+    # Construir el menú completo en un solo mensaje
     menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
     for i, t in enumerate(templates, 1):
         menu += f"{i}. {t['name']}\n"
     menu += "\nResponde con el número de la opción."
-    
+
+    # Enviar el menú como un solo mensaje
     enviar_whatsapp(sender, menu)
     logger.info(f"📋 Menú enviado a {sender}")
 
@@ -118,19 +129,19 @@ def descargar_archivo(filename):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     global ultimos_mensajes
-    
+
     data = request.get_json()
-    
+
     # =========================================================
     # 🔇 FILTRO 1: SOLO PROCESAR MENSAJES RECIBIDOS
     # =========================================================
     event_type = data.get("event_type", "")
-    
+
     if event_type != "message_received":
         return "OK", 200
-    
+
     message_data = data.get("data", {})
-    
+
     # =========================================================
     # 🔇 FILTRO 2: ANTI-BUCLE
     # =========================================================
@@ -138,62 +149,71 @@ def webhook():
     sender = message_data.get("from", "").replace("@c.us", "").replace("+", "")
     sender_clean = sender.replace("+", "").replace(" ", "")
     connected_clean = CONNECTED_NUMBER.replace("+", "").replace(" ", "")
-    
+
     # Ignorar mensajes del propio bot
     if message_data.get("fromMe") == True or message_data.get("self") == True:
         return "OK", 200
-    
+
     # Ignorar mensajes del número conectado
     if sender_clean == connected_clean:
         return "OK", 200
-    
+
     # Ignorar mensajes de la dueña
     if OWNER_WHATSAPP and sender_clean == OWNER_WHATSAPP.replace("+", "").replace(" ", ""):
         return "OK", 200
-    
+
     # Ignorar mensajes vacíos
     if not incoming_msg:
         return "OK", 200
-    
+
     # =========================================================
-    # 🔇 FILTRO 3: EVITAR DUPLICADOS
+    # 🔇 FILTRO 3: EVITAR DUPLICADOS (por ID de mensaje, con fallback a texto)
     # =========================================================
+    # UltraMsg suele mandar un identificador único del mensaje.
+    # Probamos varios nombres de campo posibles por si el formato cambia.
+    message_id = (
+        message_data.get("id")
+        or message_data.get("msgId")
+        or message_data.get("messageId")
+        or ""
+    )
+
     mensaje_normalizado = incoming_msg.lower().strip()
-    
+    clave_dedupe = message_id if message_id else mensaje_normalizado
+
     if sender_clean not in ultimos_mensajes:
         ultimos_mensajes[sender_clean] = deque(maxlen=10)
-    
+
     historial = ultimos_mensajes[sender_clean]
-    
-    if mensaje_normalizado in historial:
+
+    if clave_dedupe in historial:
         logger.info(f"🔇 DUPLICADO DETECTADO de {sender_clean}: {incoming_msg[:20]}")
         return "OK", 200
-    
-    historial.append(mensaje_normalizado)
-    
+
+    historial.append(clave_dedupe)
+
     # =========================================================
     # FIN DEL FILTRO
     # =========================================================
-    
+
     logger.info(f"✅ PROCESANDO: {sender_clean}: {incoming_msg[:30]}")
-    
+
     # --- MENÚ PRINCIPAL ---
     if incoming_msg.lower() == "hola":
-        templates = templates_loader.load_all_templates()
-        enviar_menu(sender_clean, templates)
-        
+        enviar_menu(sender_clean, TEMPLATES_CACHE)
+
         if sender_clean not in user_sessions:
             user_sessions[sender_clean] = {"estado": "SELECT_TEMPLATE", "step": 0, "answers": {}}
         else:
             user_sessions[sender_clean]["estado"] = "SELECT_TEMPLATE"
             user_sessions[sender_clean]["step"] = 0
             user_sessions[sender_clean]["answers"] = {}
-        
+
         return "OK", 200
-    
+
     # --- SELECCIONAR PLANTILLA ---
     if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "SELECT_TEMPLATE":
-        templates = templates_loader.load_all_templates()
+        templates = TEMPLATES_CACHE
         try:
             option = int(incoming_msg) - 1
             if 0 <= option < len(templates):
@@ -203,18 +223,18 @@ def webhook():
                 user_sessions[sender_clean]["current_field_index"] = 0
                 user_sessions[sender_clean]["answers"] = {}
                 user_sessions[sender_clean]["estado"] = "ASKING_DATA"
-                
+
                 fields = template["fields"]
-                
+
                 # Generar números consecutivos automáticos
                 folder_name = template["folder"]
                 answers = user_sessions[sender_clean]["answers"]
-                
+
                 if folder_name == "cotizacion":
                     answers["numero_cotizacion"] = contadores.obtener_siguiente_numero("cotizacion", "COT")
                 elif folder_name == "cuenta_cobro":
                     answers["numero_cuenta"] = contadores.obtener_siguiente_numero("cuenta_cobro", "CC")
-                
+
                 first_question = fields[0]["question"]
                 enviar_whatsapp(sender_clean, first_question)
             else:
@@ -222,7 +242,7 @@ def webhook():
         except ValueError:
             enviar_whatsapp(sender_clean, "❌ Responde con el número de la opción.")
         return "OK", 200
-    
+
     # --- PREGUNTAS ---
     if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "ASKING_DATA":
         session = user_sessions[sender_clean]
@@ -230,12 +250,12 @@ def webhook():
         fields = config_data["fields"]
         idx = session["current_field_index"]
         answers = session["answers"]
-        
+
         if idx < len(fields):
             field_key = fields[idx]["key"]
             answers[field_key] = incoming_msg
             session["current_field_index"] = idx + 1
-            
+
             if session["current_field_index"] < len(fields):
                 next_question = fields[session["current_field_index"]]["question"]
                 enviar_whatsapp(sender_clean, next_question)
@@ -258,7 +278,7 @@ def webhook():
             summary += "\n¿Están correctos? Responde SI o NO."
             enviar_whatsapp(sender_clean, summary)
             return "OK", 200
-    
+
     # --- CONFIRMACIÓN ---
     if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "REVIEW_DATA":
         if incoming_msg.lower() in ["si", "sí", "yes"]:
@@ -267,23 +287,23 @@ def webhook():
                 answers = session["answers"]
                 folder = session["template_folder"]
                 config_data = session["template_config"]
-                
+
                 output_path, output_filename = generar_word(answers, folder, config_data)
-                
+
                 enviar_whatsapp(sender_clean, "✅ Solicitud enviada correctamente.\n\nLa encargada revisará tu documento y te contactará en breve.")
-                
+
                 enviar_documento_ultramsg(OWNER_WHATSAPP, output_path, output_filename)
                 mensaje_duena = f"📄 Nuevo documento generado\n\nSolicitado por: {sender_clean}\nDocumento: {config_data.get('name', 'Documento')}"
                 enviar_whatsapp(OWNER_WHATSAPP, mensaje_duena)
-                
+
                 user_sessions.pop(sender_clean, None)
-                
+
             except Exception as e:
                 logger.error(f"Error al generar documento: {e}")
                 enviar_whatsapp(sender_clean, f"❌ Error al generar el documento: {str(e)}")
                 user_sessions.pop(sender_clean, None)
             return "OK", 200
-        
+
         elif incoming_msg.lower() in ["no", "cancelar"]:
             enviar_whatsapp(sender_clean, "🔄 Operación cancelada. Escribe 'hola' para comenzar de nuevo.")
             user_sessions.pop(sender_clean, None)
@@ -291,7 +311,7 @@ def webhook():
         else:
             enviar_whatsapp(sender_clean, "❌ Responde SI o NO.")
             return "OK", 200
-    
+
     # --- FALLBACK ---
     enviar_whatsapp(sender_clean, "No entendí tu mensaje. Escribe 'hola' para comenzar.")
     return "OK", 200

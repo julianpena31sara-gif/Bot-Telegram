@@ -109,15 +109,26 @@ def webhook():
     
     if data and "data" in data:
         message_data = data["data"]
-        incoming_msg = message_data.get("body", "").strip()
-        sender = message_data.get("from", "").replace("@c.us", "").replace("+", "")
-        sender_name = message_data.get("pushname", sender)
+        
+        # =========================================================
+        # 🔇 FILTRO POR TIPO DE EVENTO (EVITA MENSAJES DUPLICADOS)
+        # =========================================================
+        event_type = data.get("event_type", "")
+        
+        # Solo procesamos mensajes recibidos (no los que el bot envía)
+        if event_type != "message_received":
+            logger.info(f"🔇 IGNORANDO evento de tipo: {event_type} (no es un mensaje entrante)")
+            return "OK", 200
         
         # =========================================================
         # 🔇 FILTRO ANTI-BUCLE (MEJORADO)
         # =========================================================
         
-        # 1. Si el mensaje fue enviado por el propio bot (fromMe=True o self=True)
+        incoming_msg = message_data.get("body", "").strip()
+        sender = message_data.get("from", "").replace("@c.us", "").replace("+", "")
+        sender_name = message_data.get("pushname", sender)
+        
+        # 1. Si el mensaje fue enviado por el propio bot
         if message_data.get("fromMe") == True or message_data.get("self") == True:
             logger.info(f"🔇 IGNORANDO mensaje enviado por el propio bot: {incoming_msg}")
             return "OK", 200
@@ -130,14 +141,14 @@ def webhook():
             logger.info(f"🔇 IGNORANDO mensaje del número conectado ({sender_clean}): {incoming_msg}")
             return "OK", 200
         
-        # 3. Si el mensaje viene de la dueña (solo debe recibir documentos)
+        # 3. Si el mensaje viene de la dueña
         if OWNER_WHATSAPP and sender_clean == OWNER_WHATSAPP.replace("+", "").replace(" ", ""):
             logger.info(f"🔇 IGNORANDO mensaje de la dueña ({sender_clean}): {incoming_msg}")
             return "OK", 200
         
-        # 4. Si el mensaje está vacío o es un mensaje de sistema
-        if not incoming_msg or incoming_msg.startswith("{"):
-            logger.info(f"🔇 IGNORANDO mensaje vacío o de sistema")
+        # 4. Si el mensaje está vacío
+        if not incoming_msg:
+            logger.info(f"🔇 IGNORANDO mensaje vacío")
             return "OK", 200
         
         # =========================================================

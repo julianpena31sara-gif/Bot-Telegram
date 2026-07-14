@@ -9,7 +9,7 @@ from pathlib import Path
 from docxtpl import DocxTemplate
 import templates_loader
 import contadores
-import hashlib
+from collections import deque
 
 # --- CONFIGURACIÓN ---
 logging.basicConfig(level=logging.INFO)
@@ -31,8 +31,8 @@ TEMPLATES_DIR = Path("templates")
 # --- SESIONES ---
 user_sessions = {}
 
-# --- FILTRO ANTI-DUPLICADOS POR HASH ---
-mensajes_procesados = {}  # {hash: timestamp}
+# --- FILTRO ANTI-DUPLICADOS POR CONTENIDO ---
+historial_mensajes = {}  # {sender: deque([mensajes_normalizados])}
 
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
@@ -119,7 +119,7 @@ def descargar_archivo(filename):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    global mensajes_procesados
+    global historial_mensajes
     
     data = request.get_json()
     
@@ -158,28 +158,24 @@ def webhook():
         return "OK", 200
     
     # =========================================================
-    # 🔇 FILTRO 3: EVITAR DUPLICADOS POR HASH + TIEMPO
+    # 🔇 FILTRO 3: EVITAR DUPLICADOS POR CONTENIDO (SIN TIEMPO)
     # =========================================================
-    ahora = datetime.now()
-    
-    # Crear un hash único para este mensaje
-    # Usamos: remitente + mensaje normalizado + timestamp redondeado a 2 segundos
+    # Normalizar el mensaje: minúsculas, sin espacios extra
     mensaje_normalizado = incoming_msg.lower().strip()
-    timestamp_rounded = int(ahora.timestamp() / 2) * 2  # Redondear a 2 segundos
-    hash_key = hashlib.md5(f"{sender_clean}_{mensaje_normalizado}_{timestamp_rounded}".encode()).hexdigest()
     
-    # Verificar si ya procesamos este mensaje (duplicado)
-    if hash_key in mensajes_procesados:
-        logger.info(f"🔇 DUPLICADO POR HASH ignorado de {sender_clean}: {incoming_msg[:20]}")
+    # Inicializar historial para este usuario si no existe
+    if sender_clean not in historial_mensajes:
+        historial_mensajes[sender_clean] = deque(maxlen=20)  # Guarda los últimos 20 mensajes
+    
+    historial = historial_mensajes[sender_clean]
+    
+    # Si el mensaje ya está en el historial, es un duplicado
+    if mensaje_normalizado in historial:
+        logger.info(f"🔇 DUPLICADO POR CONTENIDO ignorado de {sender_clean}: {incoming_msg[:20]}")
         return "OK", 200
     
-    # Guardar el hash como procesado
-    mensajes_procesados[hash_key] = ahora
-    
-    # Limpiar hashes viejos (más de 10 segundos)
-    for h, t in list(mensajes_procesados.items()):
-        if (ahora - t).total_seconds() > 10:
-            del mensajes_procesados[h]
+    # Agregar el mensaje al historial
+    historial.append(mensaje_normalizado)
     
     # =========================================================
     # FIN DEL FILTRO

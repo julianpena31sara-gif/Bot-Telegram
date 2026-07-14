@@ -10,6 +10,7 @@ from docxtpl import DocxTemplate
 import templates_loader
 import contadores
 import hashlib
+from collections import deque
 
 # --- CONFIGURACIÓN ---
 logging.basicConfig(level=logging.INFO)
@@ -31,8 +32,8 @@ TEMPLATES_DIR = Path("templates")
 # --- SESIONES ---
 user_sessions = {}
 
-# --- PARA EVITAR DUPLICADOS (HASH + TIEMPO) ---
-mensajes_vistos = {}  # {hash: timestamp}
+# --- PARA EVITAR DUPLICADOS (por usuario) ---
+ultimos_mensajes = {}  # {sender: deque([mensajes])}
 
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
@@ -108,7 +109,7 @@ def descargar_archivo(filename):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    global mensajes_vistos
+    global ultimos_mensajes
     
     data = request.get_json()
     
@@ -147,27 +148,25 @@ def webhook():
         return "OK", 200
     
     # =========================================================
-    # 🔇 FILTRO 3: EVITAR DUPLICADOS POR HASH (EL MÁS PODEROSO)
+    # 🔇 FILTRO 3: EVITAR DUPLICADOS POR HISTORIAL DE MENSAJES
     # =========================================================
-    ahora = datetime.now()
     
-    # Crear un hash único para este mensaje (remitente + contenido + timestamp redondeado a 2 segundos)
-    # Redondeamos el timestamp a 2 segundos para capturar duplicados que llegan casi al mismo tiempo
-    timestamp_rounded = int(ahora.timestamp() / 2) * 2  # Redondear a 2 segundos
-    hash_key = hashlib.md5(f"{sender_clean}_{incoming_msg}_{timestamp_rounded}".encode()).hexdigest()
+    # Inicializar el historial para este usuario si no existe
+    if sender_clean not in ultimos_mensajes:
+        ultimos_mensajes[sender_clean] = deque(maxlen=10)
     
-    # Si ya vimos este hash, es un duplicado
-    if hash_key in mensajes_vistos:
-        logger.info(f"🔇 DUPLICADO POR HASH ignorado de {sender_clean}: {incoming_msg[:20]}")
+    historial = ultimos_mensajes[sender_clean]
+    
+    # Verificar si este mensaje ya está en el historial
+    if incoming_msg in historial:
+        logger.info(f"🔇 DUPLICADO DETECTADO de {sender_clean}: {incoming_msg[:20]}")
         return "OK", 200
     
-    # Guardar el hash como visto
-    mensajes_vistos[hash_key] = ahora
+    # Agregar el mensaje al historial
+    historial.append(incoming_msg)
     
-    # Limpiar hashes viejos (más de 10 segundos)
-    for h, t in list(mensajes_vistos.items()):
-        if (ahora - t).total_seconds() > 10:
-            del mensajes_vistos[h]
+    # Limpiar historiales viejos (más de 30 segundos sin actividad)
+    # No necesitamos hacer esto con deque porque tiene maxlen
     
     # =========================================================
     # FIN DEL FILTRO

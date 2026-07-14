@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from docxtpl import DocxTemplate
 import templates_loader
-import contadores  # <--- NUEVO: importamos el módulo de contadores
+import contadores
 
 # --- CONFIGURACIÓN ---
 logging.basicConfig(level=logging.INFO)
@@ -78,7 +78,6 @@ def obtener_saludo():
 
 # ========== FUNCIÓN PARA GENERAR WORD ==========
 def generar_word(answers, folder, config_data):
-    """Genera el Word con los datos y devuelve la ruta y nombre del archivo"""
     template_path = TEMPLATES_DIR / folder / config_data["template_file"]
     if not template_path.exists():
         raise FileNotFoundError(f"Plantilla no encontrada: {template_path}")
@@ -114,18 +113,38 @@ def webhook():
         sender = message_data.get("from", "").replace("@c.us", "").replace("+", "")
         sender_name = message_data.get("pushname", sender)
         
+        # =========================================================
+        # 🔇 FILTRO ANTI-BUCLE (MEJORADO)
+        # =========================================================
+        
+        # 1. Si el mensaje fue enviado por el propio bot (fromMe=True o self=True)
+        if message_data.get("fromMe") == True or message_data.get("self") == True:
+            logger.info(f"🔇 IGNORANDO mensaje enviado por el propio bot: {incoming_msg}")
+            return "OK", 200
+        
+        # 2. Si el mensaje viene del número conectado a Ultramsg
         connected_clean = CONNECTED_NUMBER.replace("+", "").replace(" ", "")
         sender_clean = sender.replace("+", "").replace(" ", "")
         
         if sender_clean == connected_clean:
-            logger.info(f"🔇 Ignorando mensaje del número conectado: {incoming_msg}")
+            logger.info(f"🔇 IGNORANDO mensaje del número conectado ({sender_clean}): {incoming_msg}")
             return "OK", 200
         
+        # 3. Si el mensaje viene de la dueña (solo debe recibir documentos)
         if OWNER_WHATSAPP and sender_clean == OWNER_WHATSAPP.replace("+", "").replace(" ", ""):
-            logger.info(f"🔇 Ignorando mensaje de la dueña: {incoming_msg}")
+            logger.info(f"🔇 IGNORANDO mensaje de la dueña ({sender_clean}): {incoming_msg}")
             return "OK", 200
         
-        logger.info(f"Mensaje de {sender_name} ({sender_clean}): {incoming_msg}")
+        # 4. Si el mensaje está vacío o es un mensaje de sistema
+        if not incoming_msg or incoming_msg.startswith("{"):
+            logger.info(f"🔇 IGNORANDO mensaje vacío o de sistema")
+            return "OK", 200
+        
+        # =========================================================
+        # FIN DEL FILTRO
+        # =========================================================
+        
+        logger.info(f"✅ Mensaje procesado de {sender_name} ({sender_clean}): {incoming_msg}")
         
         # --- MENÚ PRINCIPAL ---
         if incoming_msg.lower() == "hola":
@@ -155,7 +174,7 @@ def webhook():
                     
                     fields = template["fields"]
                     
-                    # --- GENERAR NÚMEROS CONSECUTIVOS AUTOMÁTICAMENTE ---
+                    # Generar números consecutivos automáticos
                     folder_name = template["folder"]
                     answers = user_sessions[sender_clean]["answers"]
                     

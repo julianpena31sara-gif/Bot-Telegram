@@ -30,12 +30,11 @@ TEMPLATES_DIR = Path("templates")
 
 # --- SESIONES ---
 user_sessions = {}
-
-# --- FILTRO ANTI-DUPLICADOS POR CONTENIDO ---
-historial_mensajes = {}  # {sender: deque([mensajes_normalizados])}
+historial_mensajes = {}
 
 # ========== FUNCIONES DE ULTRAMSG ==========
 def enviar_whatsapp(numero, mensaje):
+    """Envía un mensaje de texto usando Ultramsg"""
     url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/chat"
     payload = {"token": ULTRA_TOKEN, "to": numero, "body": mensaje}
     try:
@@ -44,27 +43,6 @@ def enviar_whatsapp(numero, mensaje):
             logger.info(f"Mensaje enviado a {numero}")
         else:
             logger.error(f"Error al enviar texto: {response.text}")
-        return response
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        return None
-
-def enviar_documento_ultramsg(numero, archivo_path, nombre_archivo):
-    descarga_url = f"{BASE_URL}/descargar/{nombre_archivo}"
-    url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/document"
-    payload = {
-        "token": ULTRA_TOKEN,
-        "to": numero,
-        "filename": nombre_archivo,
-        "document": descarga_url,
-        "caption": "📄 Documento generado automáticamente"
-    }
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        if response.status_code == 200:
-            logger.info(f"Documento enviado a {numero}: {nombre_archivo}")
-        else:
-            logger.error(f"Error al enviar documento: {response.text}")
         return response
     except Exception as e:
         logger.error(f"Error: {e}")
@@ -82,6 +60,7 @@ def obtener_saludo():
 
 # ========== FUNCIÓN PARA GENERAR WORD ==========
 def generar_word(answers, folder, config_data):
+    """Genera el Word y devuelve la ruta y nombre del archivo"""
     template_path = TEMPLATES_DIR / folder / config_data["template_file"]
     if not template_path.exists():
         raise FileNotFoundError(f"Plantilla no encontrada: {template_path}")
@@ -99,6 +78,7 @@ def generar_word(answers, folder, config_data):
 
 # ========== FUNCIÓN PARA ENVIAR MENÚ ==========
 def enviar_menu(sender, templates):
+    """Envía el menú en un solo mensaje de WhatsApp"""
     saludo = obtener_saludo()
     menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
     for i, t in enumerate(templates, 1):
@@ -111,6 +91,7 @@ def enviar_menu(sender, templates):
 # ========== ENDPOINTS ==========
 @app.route("/descargar/<filename>", methods=["GET"])
 def descargar_archivo(filename):
+    """Sirve el archivo generado para su descarga"""
     try:
         return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
     except Exception as e:
@@ -158,23 +139,19 @@ def webhook():
         return "OK", 200
     
     # =========================================================
-    # 🔇 FILTRO 3: EVITAR DUPLICADOS POR CONTENIDO (SIN TIEMPO)
+    # 🔇 FILTRO 3: EVITAR DUPLICADOS POR CONTENIDO
     # =========================================================
-    # Normalizar el mensaje: minúsculas, sin espacios extra
     mensaje_normalizado = incoming_msg.lower().strip()
     
-    # Inicializar historial para este usuario si no existe
     if sender_clean not in historial_mensajes:
-        historial_mensajes[sender_clean] = deque(maxlen=20)  # Guarda los últimos 20 mensajes
+        historial_mensajes[sender_clean] = deque(maxlen=20)
     
     historial = historial_mensajes[sender_clean]
     
-    # Si el mensaje ya está en el historial, es un duplicado
     if mensaje_normalizado in historial:
         logger.info(f"🔇 DUPLICADO POR CONTENIDO ignorado de {sender_clean}: {incoming_msg[:20]}")
         return "OK", 200
     
-    # Agregar el mensaje al historial
     historial.append(mensaje_normalizado)
     
     # =========================================================
@@ -274,13 +251,20 @@ def webhook():
                 folder = session["template_folder"]
                 config_data = session["template_config"]
                 
+                # Generar el Word
                 output_path, output_filename = generar_word(answers, folder, config_data)
                 
+                # Construir el enlace de descarga
+                descarga_url = f"{BASE_URL}/descargar/{output_filename}"
+                
+                # --- MENSAJE PARA EL CLIENTE (confirmación) ---
                 enviar_whatsapp(sender_clean, "✅ Solicitud enviada correctamente.\n\nLa encargada revisará tu documento y te contactará en breve.")
                 
-                enviar_documento_ultramsg(OWNER_WHATSAPP, output_path, output_filename)
-                mensaje_duena = f"📄 Nuevo documento generado\n\nSolicitado por: {sender_clean}\nDocumento: {config_data.get('name', 'Documento')}"
+                # --- MENSAJE PARA LA DUEÑA CON EL ENLACE DE DESCARGA ---
+                mensaje_duena = f"📄 Nuevo documento generado\n\nSolicitado por: {sender_clean}\nDocumento: {config_data.get('name', 'Documento')}\n\n🔗 Descarga: {descarga_url}"
                 enviar_whatsapp(OWNER_WHATSAPP, mensaje_duena)
+                
+                logger.info(f"📄 Documento generado y enlace enviado a la dueña: {descarga_url}")
                 
                 user_sessions.pop(sender_clean, None)
                 

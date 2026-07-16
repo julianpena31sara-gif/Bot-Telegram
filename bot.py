@@ -88,6 +88,29 @@ def enviar_menu(sender, templates):
     enviar_whatsapp(sender, menu)
     logger.info(f"📋 Menú enviado a {sender}")
 
+# ========== FUNCIÓN PARA OBTENER PRECIO ==========
+def obtener_precio(nombre_documento):
+    """Devuelve el precio según el documento"""
+    precios = {
+        "Compraventa de Vehículo": "$25.000",
+        "Compraventa de Inmueble (Casa/Lote)": "$40.000",
+        "Contrato de Arrendamiento (Casa/Apartamento)": "$35.000",
+        "Contrato de Arrendamiento (Local Comercial)": "$35.000",
+        "Poder Amplio y Suficiente": "$15.000",
+        "Autorización": "$6.000",
+        "Cotización": "Consultar con la encargada (se comunicará en breve)",
+        "Acuerdo de Pago": "$6.000",
+        "Cuenta de Cobro": "$7.000",
+        "Referencia Personal - Familiar": "$4.000"
+    }
+    
+    # Si el documento está en el diccionario, devuelve el precio
+    if nombre_documento in precios:
+        return precios[nombre_documento]
+    
+    # Si no está en la lista, devuelve el mensaje por defecto
+    return "Consultar con la encargada (se comunicará en breve)"
+
 # ========== ENDPOINTS ==========
 @app.route("/descargar/<filename>", methods=["GET"])
 def descargar_archivo(filename):
@@ -257,11 +280,16 @@ def webhook():
                 # Construir el enlace de descarga
                 descarga_url = f"{BASE_URL}/descargar/{output_filename}"
                 
-                # --- MENSAJE PARA EL CLIENTE (confirmación) ---
-                enviar_whatsapp(sender_clean, "✅ Solicitud enviada correctamente.\n\nLa encargada revisará tu documento y te contactará en breve.")
+                # Obtener el nombre y precio del documento
+                nombre_documento = config_data.get('name', 'Documento')
+                precio = obtener_precio(nombre_documento)
+                
+                # --- MENSAJE PARA EL CLIENTE (con precio) ---
+                mensaje_cliente = f"✅ Solicitud enviada correctamente.\n\n📄 Documento: {nombre_documento}\n💰 Valor: {precio}\n\nLa encargada revisará tu documento y te contactará en breve."
+                enviar_whatsapp(sender_clean, mensaje_cliente)
                 
                 # --- MENSAJE PARA LA DUEÑA CON EL ENLACE DE DESCARGA ---
-                mensaje_duena = f"📄 Nuevo documento generado\n\nSolicitado por: {sender_clean}\nDocumento: {config_data.get('name', 'Documento')}\n\n🔗 Descarga: {descarga_url}"
+                mensaje_duena = f"📄 Nuevo documento generado\n\nSolicitado por: {sender_clean}\nDocumento: {nombre_documento}\n💰 Valor: {precio}\n\n🔗 Descarga: {descarga_url}"
                 enviar_whatsapp(OWNER_WHATSAPP, mensaje_duena)
                 
                 logger.info(f"📄 Documento generado y enlace enviado a la dueña: {descarga_url}")

@@ -48,41 +48,6 @@ def enviar_whatsapp(numero, mensaje):
         logger.error(f"Error: {e}")
         return None
 
-def enviar_imagen_whatsapp(numero, imagen_url, caption=""):
-    """Envía una imagen usando Ultramsg (con URL pública)"""
-    url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/image"
-    payload = {
-        "token": ULTRA_TOKEN,
-        "to": numero,
-        "image": imagen_url,
-        "caption": caption
-    }
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        if response.status_code == 200:
-            logger.info(f"Imagen enviada a {numero}")
-        else:
-            logger.error(f"Error al enviar imagen: {response.text}")
-        return response
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        return None
-
-def descargar_media_ultramsg(media_url):
-    """Descarga un archivo media desde Ultramsg y devuelve el contenido binario"""
-    try:
-        # La URL de media viene en el webhook, pero necesitamos autenticación
-        # Usamos el token para descargar
-        response = requests.get(media_url, timeout=10)
-        if response.status_code == 200:
-            return response.content
-        else:
-            logger.error(f"Error al descargar media: {response.status_code}")
-            return None
-    except Exception as e:
-        logger.error(f"Error al descargar media: {e}")
-        return None
-
 def obtener_saludo():
     colombia_tz = pytz.timezone('America/Bogota')
     hour = datetime.now(colombia_tz).hour
@@ -150,7 +115,6 @@ def obtener_precio(nombre_documento):
 def descargar_archivo(filename):
     """Sirve el archivo generado para su descarga"""
     try:
-        # Verificar que el archivo existe antes de intentar servirlo
         file_path = Path(OUTPUT_DIR) / filename
         if not file_path.exists():
             logger.error(f"Archivo no encontrado: {file_path}")
@@ -351,13 +315,12 @@ def webhook():
                 
                 logger.info(f"📄 Documento generado y enlace enviado a la dueña: {descarga_url}")
                 
-                # --- MENSAJE PARA EL CLIENTE (CON SOLICITUD DE CAPTURA) ---
-                mensaje_cliente = f"✅ Solicitud enviada correctamente.\n\n📄 Documento: {nombre_documento}\n💰 Valor: {precio}\n\n📌 Por favor, envía la captura del pago en Nequi.\n\nLa encargada revisará tu pago y te contactará en breve."
+                # --- MENSAJE PARA EL CLIENTE (con número de Nequi) ---
+                mensaje_cliente = f"✅ Solicitud enviada correctamente.\n\n📄 Documento: {nombre_documento}\n💰 Valor: {precio}\n\n📌 Por favor, envía la captura del pago en Nequi a este número:\n📱 +57 350 2971081\n\n🔗 Haz clic aquí para enviar la captura:\nhttps://wa.me/573502971081\n\nLa encargada revisará tu pago y te contactará en breve."
                 enviar_whatsapp(sender_clean, mensaje_cliente)
                 
-                # Cambiar el estado para esperar la captura
-                user_sessions[sender_clean]["estado"] = "WAITING_PAYMENT"
-                user_sessions[sender_clean]["documento"] = nombre_documento
+                # Limpiar la sesión del usuario
+                user_sessions.pop(sender_clean, None)
                 
             except Exception as e:
                 logger.error(f"Error al generar documento: {e}")
@@ -372,38 +335,6 @@ def webhook():
         else:
             enviar_whatsapp(sender_clean, "❌ Responde SI o NO.")
             return "OK", 200
-    
-    # --- ESPERANDO CAPTURA DE PAGO ---
-    if sender_clean in user_sessions and user_sessions[sender_clean].get("estado") == "WAITING_PAYMENT":
-        documento = user_sessions[sender_clean].get("documento", "Documento")
-        
-        # Verificar si el mensaje tiene una imagen (campo 'media' o 'image' en el webhook)
-        # Ultramsg envía la URL de la imagen en el campo 'media'
-        media_url = message_data.get("media", "")
-        
-        # También puede venir en 'image' si es una imagen
-        if not media_url:
-            media_url = message_data.get("image", "")
-        
-        # Si el cliente envió un mensaje de texto, no es una imagen
-        if incoming_msg and not media_url:
-            enviar_whatsapp(sender_clean, "📌 Por favor, envía la captura del pago en Nequi (debe ser una imagen).")
-            return "OK", 200
-        
-        if media_url:
-            # Enviar la imagen a la dueña usando la URL pública
-            mensaje_duena = f"🧾 *Captura de pago recibida*\n\nCliente: {sender_clean}\nDocumento: {documento}\n\n📌 La encargada debe verificar el pago."
-            enviar_imagen_whatsapp(OWNER_WHATSAPP, media_url, mensaje_duena)
-            
-            # Mensaje al cliente
-            enviar_whatsapp(sender_clean, "✅ Captura recibida.\n\nLa encargada revisará tu pago y te contactará en breve.")
-            
-            user_sessions.pop(sender_clean, None)
-        else:
-            # Si no es una imagen, pedir que envíe la captura
-            enviar_whatsapp(sender_clean, "📌 Por favor, envía la captura del pago en Nequi (debe ser una imagen).")
-        
-        return "OK", 200
     
     # --- FALLBACK ---
     enviar_whatsapp(sender_clean, "No entendí tu mensaje. Escribe 'hola' para comenzar.")

@@ -4,7 +4,7 @@ import requests
 import json
 from flask import Flask, request, send_from_directory
 import pytz
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from docxtpl import DocxTemplate
 import templates_loader
@@ -48,6 +48,26 @@ def enviar_whatsapp(numero, mensaje):
         logger.error(f"Error: {e}")
         return None
 
+def enviar_imagen_whatsapp(numero, imagen_url, caption=""):
+    """Envía una imagen usando Ultramsg"""
+    url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/image"
+    payload = {
+        "token": ULTRA_TOKEN,
+        "to": numero,
+        "image": imagen_url,
+        "caption": caption
+    }
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            logger.info(f"Imagen enviada a {numero}")
+        else:
+            logger.error(f"Error al enviar imagen: {response.text}")
+        return response
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        return None
+
 def obtener_saludo():
     colombia_tz = pytz.timezone('America/Bogota')
     hour = datetime.now(colombia_tz).hour
@@ -83,7 +103,7 @@ def enviar_menu(sender, templates):
     menu = f"Hola, {saludo}. Soy el asistente de la Papelería Líder.\n\n¿Qué documento necesitas?\n"
     for i, t in enumerate(templates, 1):
         menu += f"{i}. {t['name']}\n"
-    menu += "\n18. Otros (Sisbén / Adres)\n"
+    menu += "\n18. 📄 Otros\n"
     menu += "\nResponde con el número de la opción."
     
     enviar_whatsapp(sender, menu)
@@ -198,6 +218,14 @@ def webhook():
     
     # --- SELECCIONAR PLANTILLA (DOCUMENTOS 1-17) ---
     if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "SELECT_TEMPLATE":
+        # =========================================================
+        # 🆕 OPCIÓN 18: OTROS (el usuario escribe libremente)
+        # =========================================================
+        if incoming_msg == "18":
+            user_sessions[sender_clean]["estado"] = "ASKING_OTROS"
+            enviar_whatsapp(sender_clean, "📄 Escribe el tipo de documento que necesitas y todos los datos requeridos (nombre, cédula, placa, dirección, etc.).\n\nLa encargada recibirá tu mensaje y te contactará en breve.")
+            return "OK", 200
+        
         templates = templates_loader.load_all_templates()
         try:
             option = int(incoming_msg) - 1
@@ -228,75 +256,16 @@ def webhook():
             enviar_whatsapp(sender_clean, "❌ Responde con el número de la opción.")
         return "OK", 200
     
-    # =========================================================
-    # 🆕 OPCIÓN 18: OTROS (SISBÉN / ADRES)
-    # =========================================================
-    
-    # --- SUBMENÚ DE OTROS ---
-    if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "SELECT_TEMPLATE":
-        if incoming_msg == "18":
-            user_sessions[sender_clean]["estado"] = "SELECCIONAR_OTROS"
-            enviar_whatsapp(sender_clean, "📋 Opciones de Otros:\n\n1. Certificado de Sisbén\n2. Certificado de Adres\n\nResponde con el número de la opción.")
-            return "OK", 200
-    
-    # --- SELECCIONAR SISBÉN O ADRES ---
-    if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "SELECCIONAR_OTROS":
-        if incoming_msg == "1":
-            user_sessions[sender_clean]["estado"] = "ASKING_SISBEN_TIPO"
-            user_sessions[sender_clean]["answers"] = {}
-            user_sessions[sender_clean]["answers"]["tipo"] = "Sisbén"
-            enviar_whatsapp(sender_clean, "📄 Escribe el TIPO de documento (CC, CE, TI, etc.):")
-            return "OK", 200
-        
-        elif incoming_msg == "2":
-            user_sessions[sender_clean]["estado"] = "ASKING_ADRES_TIPO"
-            user_sessions[sender_clean]["answers"] = {}
-            user_sessions[sender_clean]["answers"]["tipo"] = "Adres"
-            enviar_whatsapp(sender_clean, "📄 Escribe el TIPO de documento (CC, CE, TI, etc.):")
-            return "OK", 200
-        
-        else:
-            enviar_whatsapp(sender_clean, "❌ Opción no válida. Elige 1 para Sisbén o 2 para Adres.")
-            return "OK", 200
-    
-    # --- PREGUNTAS SISBÉN ---
-    if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "ASKING_SISBEN_TIPO":
-        user_sessions[sender_clean]["answers"]["tipo_documento"] = incoming_msg
-        user_sessions[sender_clean]["estado"] = "ASKING_SISBEN_NUMERO"
-        enviar_whatsapp(sender_clean, "🔢 Escribe el NÚMERO de documento:")
-        return "OK", 200
-    
-    if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "ASKING_SISBEN_NUMERO":
-        user_sessions[sender_clean]["answers"]["numero_documento"] = incoming_msg
-        answers = user_sessions[sender_clean]["answers"]
+    # --- OPCIÓN 18: RECIBIR EL MENSAJE DEL CLIENTE Y ENVIARLO A LA DUEÑA ---
+    if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "ASKING_OTROS":
+        mensaje_cliente = incoming_msg
         
         # Enviar a la dueña
-        mensaje_duena = f"📄 *Solicitud de {answers['tipo']}*\n\nTipo de documento: {answers['tipo_documento']}\nNúmero de documento: {answers['numero_documento']}\n\n📌 La encargada debe realizar la consulta manualmente."
+        mensaje_duena = f"📄 *Solicitud de Otros*\n\n{ mensaje_cliente }\n\n📌 La encargada debe gestionar esta solicitud manualmente."
         enviar_whatsapp(OWNER_WHATSAPP, mensaje_duena)
         
         # Mensaje al cliente
-        enviar_whatsapp(sender_clean, f"✅ Solicitud de {answers['tipo']} enviada correctamente.\n\nLa encargada revisará tu solicitud y te contactará en breve.")
-        
-        user_sessions.pop(sender_clean, None)
-        return "OK", 200
-    
-    # --- PREGUNTAS ADRES ---
-    if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "ASKING_ADRES_TIPO":
-        user_sessions[sender_clean]["answers"]["tipo_documento"] = incoming_msg
-        user_sessions[sender_clean]["estado"] = "ASKING_ADRES_NUMERO"
-        enviar_whatsapp(sender_clean, "🔢 Escribe el NÚMERO de documento:")
-        return "OK", 200
-    
-    if sender_clean in user_sessions and user_sessions[sender_clean]["estado"] == "ASKING_ADRES_NUMERO":
-        user_sessions[sender_clean]["answers"]["numero_documento"] = incoming_msg
-        answers = user_sessions[sender_clean]["answers"]
-        
-        # Enviar a la dueña
-        mensaje_duena = f"📄 *Solicitud de {answers['tipo']}*\n\nTipo de documento: {answers['tipo_documento']}\nNúmero de documento: {answers['numero_documento']}\n\n📌 La encargada debe realizar la consulta manualmente."
-        enviar_whatsapp(OWNER_WHATSAPP, mensaje_duena)
-        
-        # Mensaje al cliente
-        enviar_whatsapp(sender_clean, f"✅ Solicitud de {answers['tipo']} enviada correctamente.\n\nLa encargada revisará tu solicitud y te contactará en breve.")
+        enviar_whatsapp(sender_clean, "✅ Solicitud enviada correctamente.\n\nLa encargada revisará tu mensaje y te contactará en breve.")
         
         user_sessions.pop(sender_clean, None)
         return "OK", 200
@@ -356,17 +325,19 @@ def webhook():
                 nombre_documento = config_data.get('name', 'Documento')
                 precio = obtener_precio(nombre_documento)
                 
-                # --- MENSAJE PARA EL CLIENTE ---
-                mensaje_cliente = f"✅ Solicitud enviada correctamente.\n\n📄 Documento: {nombre_documento}\n💰 Valor: {precio}\n\nLa encargada revisará tu documento y te contactará en breve."
-                enviar_whatsapp(sender_clean, mensaje_cliente)
-                
-                # --- MENSAJE PARA LA DUEÑA ---
+                # --- ENVIAR DOCUMENTO A LA DUEÑA ---
                 mensaje_duena = f"📄 Nuevo documento generado\n\nSolicitado por: {sender_clean}\nDocumento: {nombre_documento}\n💰 Valor: {precio}\n\n🔗 Descarga: {descarga_url}"
                 enviar_whatsapp(OWNER_WHATSAPP, mensaje_duena)
                 
                 logger.info(f"📄 Documento generado y enlace enviado a la dueña: {descarga_url}")
                 
-                user_sessions.pop(sender_clean, None)
+                # --- MENSAJE PARA EL CLIENTE (CON SOLICITUD DE CAPTURA) ---
+                mensaje_cliente = f"✅ Solicitud enviada correctamente.\n\n📄 Documento: {nombre_documento}\n💰 Valor: {precio}\n\n📌 Por favor, envía la captura del pago en Nequi.\n\nLa encargada revisará tu pago y te contactará en breve."
+                enviar_whatsapp(sender_clean, mensaje_cliente)
+                
+                # Cambiar el estado para esperar la captura
+                user_sessions[sender_clean]["estado"] = "WAITING_PAYMENT"
+                user_sessions[sender_clean]["documento"] = nombre_documento
                 
             except Exception as e:
                 logger.error(f"Error al generar documento: {e}")
@@ -381,6 +352,28 @@ def webhook():
         else:
             enviar_whatsapp(sender_clean, "❌ Responde SI o NO.")
             return "OK", 200
+    
+    # --- ESPERANDO CAPTURA DE PAGO ---
+    if sender_clean in user_sessions and user_sessions[sender_clean].get("estado") == "WAITING_PAYMENT":
+        documento = user_sessions[sender_clean].get("documento", "Documento")
+        
+        # Verificar si el mensaje tiene una imagen (Ultramsg envía el campo 'media' con la URL)
+        media_url = message_data.get("media", "")
+        
+        if media_url:
+            # Enviar la imagen a la dueña
+            mensaje_duena = f"🧾 *Captura de pago recibida*\n\nCliente: {sender_clean}\nDocumento: {documento}\n\n📌 La encargada debe verificar el pago."
+            enviar_imagen_whatsapp(OWNER_WHATSAPP, media_url, mensaje_duena)
+            
+            # Mensaje al cliente
+            enviar_whatsapp(sender_clean, "✅ Captura recibida.\n\nLa encargada revisará tu pago y te contactará en breve.")
+            
+            user_sessions.pop(sender_clean, None)
+        else:
+            # Si no es una imagen, pedir que envíe la captura
+            enviar_whatsapp(sender_clean, "📌 Por favor, envía la captura del pago en Nequi (debe ser una imagen).")
+        
+        return "OK", 200
     
     # --- FALLBACK ---
     enviar_whatsapp(sender_clean, "No entendí tu mensaje. Escribe 'hola' para comenzar.")

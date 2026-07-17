@@ -49,7 +49,7 @@ def enviar_whatsapp(numero, mensaje):
         return None
 
 def enviar_imagen_whatsapp(numero, imagen_url, caption=""):
-    """Envía una imagen usando Ultramsg"""
+    """Envía una imagen usando Ultramsg (con URL pública)"""
     url = f"https://api.ultramsg.com/{ULTRA_INSTANCE_ID}/messages/image"
     payload = {
         "token": ULTRA_TOKEN,
@@ -66,6 +66,21 @@ def enviar_imagen_whatsapp(numero, imagen_url, caption=""):
         return response
     except Exception as e:
         logger.error(f"Error: {e}")
+        return None
+
+def descargar_media_ultramsg(media_url):
+    """Descarga un archivo media desde Ultramsg y devuelve el contenido binario"""
+    try:
+        # La URL de media viene en el webhook, pero necesitamos autenticación
+        # Usamos el token para descargar
+        response = requests.get(media_url, timeout=10)
+        if response.status_code == 200:
+            return response.content
+        else:
+            logger.error(f"Error al descargar media: {response.status_code}")
+            return None
+    except Exception as e:
+        logger.error(f"Error al descargar media: {e}")
         return None
 
 def obtener_saludo():
@@ -135,6 +150,11 @@ def obtener_precio(nombre_documento):
 def descargar_archivo(filename):
     """Sirve el archivo generado para su descarga"""
     try:
+        # Verificar que el archivo existe antes de intentar servirlo
+        file_path = Path(OUTPUT_DIR) / filename
+        if not file_path.exists():
+            logger.error(f"Archivo no encontrado: {file_path}")
+            return "Archivo no encontrado", 404
         return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
     except Exception as e:
         logger.error(f"Error al descargar {filename}: {e}")
@@ -357,11 +377,21 @@ def webhook():
     if sender_clean in user_sessions and user_sessions[sender_clean].get("estado") == "WAITING_PAYMENT":
         documento = user_sessions[sender_clean].get("documento", "Documento")
         
-        # Verificar si el mensaje tiene una imagen (Ultramsg envía el campo 'media' con la URL)
+        # Verificar si el mensaje tiene una imagen (campo 'media' o 'image' en el webhook)
+        # Ultramsg envía la URL de la imagen en el campo 'media'
         media_url = message_data.get("media", "")
         
+        # También puede venir en 'image' si es una imagen
+        if not media_url:
+            media_url = message_data.get("image", "")
+        
+        # Si el cliente envió un mensaje de texto, no es una imagen
+        if incoming_msg and not media_url:
+            enviar_whatsapp(sender_clean, "📌 Por favor, envía la captura del pago en Nequi (debe ser una imagen).")
+            return "OK", 200
+        
         if media_url:
-            # Enviar la imagen a la dueña
+            # Enviar la imagen a la dueña usando la URL pública
             mensaje_duena = f"🧾 *Captura de pago recibida*\n\nCliente: {sender_clean}\nDocumento: {documento}\n\n📌 La encargada debe verificar el pago."
             enviar_imagen_whatsapp(OWNER_WHATSAPP, media_url, mensaje_duena)
             
